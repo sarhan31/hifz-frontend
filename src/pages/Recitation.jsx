@@ -218,7 +218,7 @@ const Recitation = () => {
     
     formData.append('audio', audioFile);
     formData.append('user_id', user?.id);
-    formData.append('surah_number', 1);
+    formData.append('surah_number', selectedSurah?.id || 1);
     formData.append('ayah_start', 1);
     formData.append('ayah_end', 5);
     formData.append('fluency_score', finalFluency);
@@ -247,7 +247,7 @@ const Recitation = () => {
           `${API_URL}/api/recitation-session`,
           {
             user_id: user.id,
-            surah_id: 1,
+            surah_id: selectedSurah?.id || 1,
             accuracy: accuracyToSave,
             mistake_count: statsRef.current.longPauseCount || 0
           },
