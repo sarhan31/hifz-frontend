@@ -1,0 +1,181 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Outfit:wght@100..900&display=swap');
+
+@font-face {
+  font-family: 'IndoPak';
+  src: url('/fonts/IndoPak.ttf') format('truetype');
+  font-display: swap;
+}
+
+:root {
+  --transition-speed: 0.3s;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+  height: 100%;
+}
+
+body {
+  font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  min-height: 100%;
+  overscroll-behavior-y: none;
+  transition: background-color var(--transition-speed) ease, color var(--transition-speed) ease;
+}
+
+/* Theme-specific Overrides */
+.theme-lightPaper {
+  --card-bg: rgba(255, 255, 255, 0.7);
+  --card-border: rgba(0, 0, 0, 0.1);
+  --text-primary: #1a202c;
+  --text-secondary: #4a5568;
+  --accent-color: #064e3b;
+}
+
+.theme-darkGreen, .theme-nightBlue, .theme-highContrast {
+  --card-bg: rgba(15, 23, 42, 0.4);
+  --card-border: rgba(255, 255, 255, 0.12);
+  --text-primary: #ffffff;
+  --text-secondary: #94a3b8;
+  --accent-color: #10b981;
+}
+
+.theme-highContrast {
+  --card-bg: rgba(0, 0, 0, 0.8);
+  --card-border: #fbbf24;
+  --text-primary: #fbbf24;
+  --text-secondary: #fef08a;
+  --accent-color: #fbbf24;
+}
+
+/* Global Card Styling */
+.glass-card {
+  background: var(--card-bg, rgba(15, 23, 42, 0.4));
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid var(--card-border, rgba(255, 255, 255, 0.12));
+  border-radius: 28px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.theme-lightPaper .glass-card {
+  box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.05);
+}
+
+.green-glow {
+  box-shadow: 0 0 30px rgba(16, 185, 129, 0.12), inset 0 0 20px rgba(16, 185, 129, 0.05);
+}
+
+.indigo-glow {
+  box-shadow: 0 0 30px rgba(99, 102, 241, 0.12), inset 0 0 20px rgba(99, 102, 241, 0.05);
+}
+
+.gold-text {
+  background: linear-gradient(to bottom right, #fde047, #eab308);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 800;
+}
+
+.font-arabic {
+  font-family: 'Amiri Quran', 'Scheherazade New', 'Noto Naskh Arabic', serif;
+}
+
+.mushaf-container {
+  direction: rtl;
+  text-align: center;
+  padding-bottom: 100px;
+}
+
+.ayah-block {
+  display: block;
+  margin: 16px 0;
+}
+
+.ayah-text {
+  display: inline-block;
+  line-height: 2.5;
+  font-size: 1.15em;
+  color: inherit;
+  direction: rtl;
+  text-align: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.active-ayah .ayah-text {
+  background: rgba(16, 185, 129, 0.15);
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.1);
+  border-radius: 12px;
+  padding: 6px 12px;
+  color: var(--accent-color);
+}
+
+.ayah-separator {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 16px;
+  color: #fbbf24;
+  font-family: 'Amiri Quran', serif;
+  font-size: 2.2em;
+  line-height: 1;
+  vertical-align: middle;
+  transition: all 0.3s ease;
+  opacity: 0.9;
+}
+
+.ayah-number {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inset: 0;
+  font-size: 0.38em;
+  font-weight: 900;
+  color: #ffffff;
+  font-family: 'Outfit', sans-serif;
+  transform: translateY(-1.5px);
+}
+
+.theme-lightPaper .ayah-number {
+  color: #1a202c;
+}
+
+.hidden-word {
+  background: rgba(128, 128, 128, 0.1);
+  border-radius: 4px;
+  transition: opacity 0.3s ease;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.momentum-glow {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+}
+
+.ayah-focus-shadow {
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.5);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+

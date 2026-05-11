@@ -1,0 +1,338 @@
+{
+  "ا": {
+    "place_en": "Empty space in the mouth and throat (Al-Jawf)",
+    "place_hi": "मुंह और गले का खाली स्थान (अल-जौफ़)",
+    "place_gu": "મોં અને ગળાની ખાલી જગ્યા (અલ-જૌફ)",
+    "place_ur": "منہ اور حلق کا خالی حصہ (الجوف)",
+    "audio": "/makhraj/alif.mp3",
+    "diagram": "/makhraj-diagrams/alif.svg",
+    "articulation": {
+      "x": 220,
+      "y": 350
+    }
+  },
+  "ب": {
+    "place_en": "Between the lips (closing them)",
+    "place_hi": "दोनों होठों के बीच (उन्हें बंद करते हुए)",
+    "place_gu": "બંને હોઠ વચ્ચે (તેમને બંધ કરીને)",
+    "place_ur": "دونوں ہونٹوں کے درمیان (بند کرتے ہوئے)",
+    "audio": "/makhraj/ba.mp3",
+    "diagram": "/makhraj-diagrams/ba.svg",
+    "articulation": {
+      "x": 110,
+      "y": 230
+    }
+  },
+  "ت": {
+    "place_en": "Tip of the tongue touching the roots of the upper front teeth",
+    "place_hi": "जीभ की नोक ऊपर के सामने के दांतों की जड़ों को छूती है",
+    "place_gu": "જીભની ટોચ ઉપરના આગળના દાંતના મૂળને સ્પર્શે છે",
+    "place_ur": "زبان کی نوک اوپر کے سامنے والے دانتوں کی جڑوں سے لگتی ہے",
+    "audio": "/makhraj/ta.mp3",
+    "diagram": "/makhraj-diagrams/ta.svg",
+    "articulation": {
+      "x": 135,
+      "y": 205
+    }
+  },
+  "ث": {
+    "place_en": "Tip of the tongue touching the edge of the upper front teeth",
+    "place_hi": "जीभ की नोक ऊपर के सामने के दांतों के किनारे को छूती है",
+    "place_gu": "જીભની ટોચ ઉપરના આગળના દાંતની ધારને સ્પર્શે છે",
+    "place_ur": "زبان کی نوک اوپر کے سامنے والے دانتوں کے کنارے سے لگتی ہے",
+    "audio": "/makhraj/tha.mp3",
+    "diagram": "/makhraj-diagrams/tha.svg",
+    "articulation": {
+      "x": 125,
+      "y": 220
+    }
+  },
+  "ج": {
+    "place_en": "Middle of the tongue touching the middle of the palate",
+    "place_hi": "जीभ का मध्य भाग तालू के मध्य भाग को छूता है",
+    "place_gu": "જીભનો મધ્ય ભાગ તાળવાના મધ્ય ભાગને સ્પર્શે છે",
+    "place_ur": "زبان کا درمیانی حصہ تالو کے درمیانی حصے سے لگتا ہے",
+    "audio": "/makhraj/jim.mp3",
+    "diagram": "/makhraj-diagrams/jim.svg",
+    "articulation": {
+      "x": 200,
+      "y": 250
+    }
+  },
+  "ح": {
+    "place_en": "Middle of the throat",
+    "place_hi": "गले का मध्य भाग",
+    "place_gu": "ગળાનો મધ્ય ભાગ",
+    "place_ur": "حلق کا درمیانی حصہ",
+    "audio": "/makhraj/ha.mp3",
+    "diagram": "/makhraj-diagrams/ha.svg",
+    "articulation": {
+      "x": 280,
+      "y": 350
+    }
+  },
+  "خ": {
+    "place_en": "Top of the throat",
+    "place_hi": "गले का ऊपरी भाग",
+    "place_gu": "ગળાનો ઉપરનો ભાગ",
+    "place_ur": "حلق کا اوپری حصہ",
+    "audio": "/makhraj/kha.mp3",
+    "diagram": "/makhraj-diagrams/kha.svg",
+    "articulation": {
+      "x": 280,
+      "y": 280
+    }
+  },
+  "د": {
+    "place_en": "Tip of the tongue touching the roots of the upper front teeth",
+    "place_hi": "जीभ की नोक ऊपर के सामने के दांतों की जड़ों को छूती है",
+    "place_gu": "જીભની ટોચ ઉપરના આગળના દાંતના મૂળને સ્પર્શે છે",
+    "place_ur": "زبان کی نوک اوپر کے سامنے والے دانتوں کی جڑوں سے لگتی ہے",
+    "audio": "/makhraj/dal.mp3",
+    "diagram": "/makhraj-diagrams/dal.svg",
+    "articulation": {
+      "x": 135,
+      "y": 205
+    }
+  },
+  "ذ": {
+    "place_en": "Tip of the tongue touching the edge of the upper front teeth",
+    "place_hi": "जीभ की नोक ऊपर के सामने के दांतों के किनारे को छूती है",
+    "place_gu": "જીભની ટોચ ઉપરના આગળના દાંતની ધારને સ્પર્શે છે",
+    "place_ur": "زبان کی نوک اوپر کے سامنے والے دانتوں کے کنارے سے لگتی ہے",
+    "audio": "/makhraj/dhal.mp3",
+    "diagram": "/makhraj-diagrams/dhal.svg",
+    "articulation": {
+      "x": 125,
+      "y": 220
+    }
+  },
+  "ر": {
+    "place_en": "Tip of tongue near upper front teeth",
+    "place_hi": "जीभ की नोक ऊपर के दांतों के पास",
+    "place_gu": "જીભની ટિપ ઉપરના દાંત પાસે",
+    "place_ur": "زبان کی نوک اوپر کے دانتوں کے قریب",
+    "audio": "/makhraj/ra.mp3",
+    "diagram": "/makhraj-diagrams/ra.svg",
+    "articulation": {
+      "x": 135,
+      "y": 205
+    }
+  },
+  "ز": {
+    "place_en": "Tip of the tongue touching the lower front teeth",
+    "place_hi": "जीभ की नोक नीचे के सामने के दांतों को छूती है",
+    "place_gu": "જીભની ટોચ નીચેના આગળના દાંતને સ્પર્શે છે",
+    "place_ur": "زبان کی نوک نیچے کے سامنے والے دانتوں سے لگتی ہے",
+    "audio": "/makhraj/zay.mp3",
+    "diagram": "/makhraj-diagrams/zay.svg",
+    "articulation": {
+      "x": 125,
+      "y": 240
+    }
+  },
+  "س": {
+    "place_en": "Tip of the tongue touching the lower front teeth",
+    "place_hi": "जीभ की नोक नीचे के सामने के दांतों को छूती है",
+    "place_gu": "જીભની ટોચ નીચેના આગળના દાંતને સ્પર્શે છે",
+    "place_ur": "زبان کی نوک نیچے کے سامنے والے دانتوں سے لگتی ہے",
+    "audio": "/makhraj/seen.mp3",
+    "diagram": "/makhraj-diagrams/seen.svg",
+    "articulation": {
+      "x": 125,
+      "y": 240
+    }
+  },
+  "ش": {
+    "place_en": "Middle of the tongue touching the middle of the palate",
+    "place_hi": "जीभ का मध्य भाग तालू के मध्य भाग को छूता है",
+    "place_gu": "જીભનો મધ્ય ભાગ તાળવાના મધ્ય ભાગને સ્પર્શે છે",
+    "place_ur": "زبان کا درمیانی حصہ تالو کے درمیانی حصے سے لگتا ہے",
+    "audio": "/makhraj/sheen.mp3",
+    "diagram": "/makhraj-diagrams/sheen.svg",
+    "articulation": {
+      "x": 200,
+      "y": 250
+    }
+  },
+  "ص": {
+    "place_en": "Tip of the tongue touching the lower front teeth (with elevation)",
+    "place_hi": "जीभ की नोक नीचे के सामने के दांतों को छूती है (ऊंचाई के साथ)",
+    "place_gu": "જીભની ટોચ નીચેના આગળના દાંતને સ્પર્શે છે",
+    "place_ur": "زبان کی نوک نیچے کے سامنے والے دانتوں سے لگتی ہے (موٹا کر کے)",
+    "audio": "/makhraj/sad.mp3",
+    "diagram": "/makhraj-diagrams/sad.svg",
+    "articulation": {
+      "x": 125,
+      "y": 240
+    }
+  },
+  "ض": {
+    "place_en": "Side of the tongue touching the upper molars",
+    "place_hi": "जीभ का किनारा ऊपर के दाढ़ों को छूता है",
+    "place_gu": "જીભની બાજુ ઉપરના દાઢને સ્પર્શે છે",
+    "place_ur": "زبان کا کنارہ اوپر کی داڑھوں سے لگتا ہے",
+    "audio": "/makhraj/dad.mp3",
+    "diagram": "/makhraj-diagrams/dad.svg",
+    "articulation": {
+      "x": 180,
+      "y": 240
+    }
+  },
+  "ط": {
+    "place_en": "Tip of the tongue touching the roots of the upper front teeth (with elevation)",
+    "place_hi": "जीभ की नोक ऊपर के सामने के दांतों की जड़ों को छूती है",
+    "place_gu": "જીભની ટોચ ઉપરના આગળના દાંતના મૂળને સ્પર્શે છે",
+    "place_ur": "زبان کی نوک اوپر کے سامنے والے دانتوں کی جڑوں سے لگتی ہے",
+    "audio": "/makhraj/ta2.mp3",
+    "diagram": "/makhraj-diagrams/ta2.svg",
+    "articulation": {
+      "x": 135,
+      "y": 205
+    }
+  },
+  "ظ": {
+    "place_en": "Tip of the tongue touching the edge of the upper front teeth (with elevation)",
+    "place_hi": "जीभ की नोक ऊपर के सामने के दांतों के किनारे को छूती है",
+    "place_gu": "જીભની ટોચ ઉપરના આગળના દાંતની ધારને સ્પર્શે છે",
+    "place_ur": "زبان کی نوک اوپر کے سامنے والے دانتوں کے کنارے سے لگتی ہے",
+    "audio": "/makhraj/dha2.mp3",
+    "diagram": "/makhraj-diagrams/dha2.svg",
+    "articulation": {
+      "x": 125,
+      "y": 220
+    }
+  },
+  "ع": {
+    "place_en": "Middle of the throat",
+    "place_hi": "गले का मध्य भाग",
+    "place_gu": "ગળાનો મધ્ય ભાગ",
+    "place_ur": "حلق کا درمیانی حصہ",
+    "audio": "/makhraj/ain.mp3",
+    "diagram": "/makhraj-diagrams/ain.svg",
+    "articulation": {
+      "x": 280,
+      "y": 350
+    }
+  },
+  "غ": {
+    "place_en": "Top of the throat",
+    "place_hi": "गले का ऊपरी भाग",
+    "place_gu": "ગળાનો ઉપરનો ભાગ",
+    "place_ur": "حلق کا اوپری حصہ",
+    "audio": "/makhraj/ghain.mp3",
+    "diagram": "/makhraj-diagrams/ghain.svg",
+    "articulation": {
+      "x": 280,
+      "y": 280
+    }
+  },
+  "ف": {
+    "place_en": "Inner part of lower lip touching edge of upper front teeth",
+    "place_hi": "निचले होंठ का भीतरी भाग ऊपर के सामने के दांतों के किनारे को छूता है",
+    "place_gu": "નીચલા હોઠનો અંદરનો ભાગ ઉપરના આગળના દાંતની ધારને સ્પર્શે છે",
+    "place_ur": "نچلے ہونٹ کا اندرونی حصہ اوپر کے سامنے والے دانتوں کے کنارے سے لگتا ہے",
+    "audio": "/makhraj/fa.mp3",
+    "diagram": "/makhraj-diagrams/fa.svg",
+    "articulation": {
+      "x": 125,
+      "y": 225
+    }
+  },
+  "ق": {
+    "place_en": "Back of tongue touching soft palate",
+    "place_hi": "जीभ का पिछला हिस्सा नरम तालू से टकराता है",
+    "place_gu": "જીભનો પાછળનો ભાગ નરમ તાલુ સાથે જોડાય છે",
+    "place_ur": "زبان کا پچھلا حصہ نرم تالو سے لگتا ہے",
+    "audio": "/makhraj/qaf.mp3",
+    "diagram": "/makhraj-diagrams/qaf.svg",
+    "articulation": {
+      "x": 250,
+      "y": 240
+    }
+  },
+  "ك": {
+    "place_en": "Back of tongue touching hard palate (below Qaf)",
+    "place_hi": "जीभ का पिछला हिस्सा कठोर तालू से टकराता है",
+    "place_gu": "જીભનો પાછળનો ભાગ સખત તાલુ સાથે જોડાય છે",
+    "place_ur": "زبان کا پچھلا حصہ سخت تالو سے لگتا ہے",
+    "audio": "/makhraj/kaf.mp3",
+    "diagram": "/makhraj-diagrams/kaf.svg",
+    "articulation": {
+      "x": 230,
+      "y": 230
+    }
+  },
+  "ل": {
+    "place_en": "Tip of the tongue touching the gums of the upper front teeth",
+    "place_hi": "जीभ की नोक ऊपर के सामने के दांतों के मसूड़ों को छूती है",
+    "place_gu": "જીભની ટોચ ઉપરના આગળના દાંતના પેઢાને સ્પર્શે છે",
+    "place_ur": "زبان کی نوک اوپر کے سامنے والے دانتوں کے مسوڑوں سے لگتی ہے",
+    "audio": "/makhraj/lam.mp3",
+    "diagram": "/makhraj-diagrams/lam.svg",
+    "articulation": {
+      "x": 135,
+      "y": 205
+    }
+  },
+  "m": {
+    "place_en": "Between the lips (dry part)",
+    "place_hi": "दोनों होठों के बीच",
+    "place_gu": "બંને હોઠ વચ્ચે",
+    "place_ur": "دونوں ہونٹوں کے درمیان",
+    "audio": "/makhraj/meem.mp3",
+    "diagram": "/makhraj-diagrams/meem.svg",
+    "articulation": {
+      "x": 110,
+      "y": 230
+    }
+  },
+  "ن": {
+    "place_en": "Tip of the tongue touching the gums of the upper front teeth",
+    "place_hi": "जीभ की नोक ऊपर के सामने के दांतों के मसूड़ों को छूती है",
+    "place_gu": "જીભની ટોચ ઉપરના આગળના દાંતના પેઢાને સ્પર્શે છે",
+    "place_ur": "زبان کی نوک اوپر کے سامنے والے دانتوں کے مسوڑوں سے لگتی ہے",
+    "audio": "/makhraj/noon.mp3",
+    "diagram": "/makhraj-diagrams/noon.svg",
+    "articulation": {
+      "x": 135,
+      "y": 205
+    }
+  },
+  "ه": {
+    "place_en": "Bottom of the throat",
+    "place_hi": "गले का निचला भाग",
+    "place_gu": "ગળાનો નીચેનો ભાગ",
+    "place_ur": "حلق کا نچلا حصہ",
+    "audio": "/makhraj/ha2.mp3",
+    "diagram": "/makhraj-diagrams/ha2.svg",
+    "articulation": {
+      "x": 280,
+      "y": 420
+    }
+  },
+  "و": {
+    "place_en": "Circling of the lips",
+    "place_hi": "होठों को गोल करना",
+    "place_gu": "હોઠ ગોળ કરવા",
+    "place_ur": "ہونٹوں کو گول کرنا",
+    "audio": "/makhraj/waw.mp3",
+    "diagram": "/makhraj-diagrams/waw.svg",
+    "articulation": {
+      "x": 90,
+      "y": 230
+    }
+  },
+  "ي": {
+    "place_en": "Middle of the tongue touching the middle of the palate",
+    "place_hi": "जीभ का मध्य भाग तालू के मध्य भाग को छूता है",
+    "place_gu": "જીભનો મધ્ય ભાગ તાળવાના મધ્ય ભાગને સ્પર્શે છે",
+    "place_ur": "زبان کا درمیانی حصہ تالو کے درمیانی حصے سے لگتا ہے",
+    "audio": "/makhraj/ya.mp3",
+    "diagram": "/makhraj-diagrams/ya.svg",
+    "articulation": {
+      "x": 200,
+      "y": 250
+    }
+  }
+}
