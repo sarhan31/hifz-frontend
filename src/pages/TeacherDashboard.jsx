@@ -38,6 +38,10 @@ const TeacherDashboard = () => {
         console.error("Error fetching students:", err);
         setError("Failed to load students list.");
       } finally {
+        setLoading(false);
+      }
+    };
+
     fetchStudents();
   }, [user]);
 
