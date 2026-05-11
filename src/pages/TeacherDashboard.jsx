@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Users, BookOpen, Activity, Play, Pause, ChevronRight, User, AlertCircle, Calendar, CheckCircle, UserX, Mic } from 'lucide-react';
+import { Users, BookOpen, Activity, Play, Pause, ChevronRight, User, AlertCircle, Calendar, CheckCircle, UserX, Mic, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import SpecialLoader from '../components/SpecialLoader';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
 const TeacherDashboard = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   // State
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -35,12 +38,16 @@ const TeacherDashboard = () => {
         console.error("Error fetching students:", err);
         setError("Failed to load students list.");
       } finally {
-        setLoading(false);
-      }
-    };
-
     fetchStudents();
   }, [user]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <SpecialLoader message="Loading Students..." />
+      </div>
+    );
+  }
 
   // Handle Student Selection
   const handleStudentClick = async (student) => {
@@ -82,18 +89,24 @@ const TeacherDashboard = () => {
       
       {/* LEFT PANEL - Student List */}
       <div className="w-full md:w-1/4 bg-slate-900/50 backdrop-blur-md border-b md:border-b-0 md:border-r border-white/10 flex flex-col h-80 md:h-auto shrink-0">
-        <div className="p-6 border-b border-white/10">
-          <div className="flex items-center gap-3 text-gold-accent mb-1">
-            <Users className="w-6 h-6" />
-            <h1 className="text-xl font-bold tracking-wide">My Students</h1>
+        <div className="p-6 border-b border-white/10 flex items-center gap-4">
+          <button 
+            onClick={() => navigate('/')}
+            className="p-3 glass-card hover:bg-white/10 active:scale-90 transition-all"
+          >
+            <ArrowLeft className="w-5 h-5 text-slate-400" />
+          </button>
+          <div>
+            <div className="flex items-center gap-3 text-gold-accent mb-1">
+              <Users className="w-6 h-6" />
+              <h1 className="text-xl font-bold tracking-wide">My Students</h1>
+            </div>
+            <p className="text-xs text-slate-400">Select a student to view progress</p>
           </div>
-          <p className="text-xs text-slate-400">Select a student to view progress</p>
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-2">
-          {loading ? (
-            <div className="text-center py-10 text-slate-500 animate-pulse">Loading...</div>
-          ) : students.length === 0 ? (
+          {students.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-slate-500">
                 <UserX className="w-12 h-12 mb-3 opacity-50" />
                 <p>No students assigned.</p>
@@ -149,7 +162,7 @@ const TeacherDashboard = () => {
 
             {dataLoading ? (
                <div className="flex items-center justify-center h-64">
-                 <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
+                 <SpecialLoader message="Fetching Details..." />
                </div>
             ) : studentData ? (
               <motion.div 

@@ -19,6 +19,8 @@ html {
 
 body {
   font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: #020617; /* Default dark background to prevent white flash */
+  color: #ffffff;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   min-height: 100%;

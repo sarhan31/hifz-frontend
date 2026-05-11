@@ -578,10 +578,9 @@ const HifzTestMode = () => {
             viewRef.current = 'test'; // Force immediate update to bypass useEffect delay
             setLoading(false);
             
-            // FRESH START: Restart recognition to clear browser buffers
-            setTimeout(() => {
-                startRecognition();
-            }, 100);
+            // --- REMOVED AUTO-START FOR PRIVACY ---
+            // Microphone no longer starts automatically. 
+            // User must click the Mic button to begin reciting.
             
         } catch (err) {
             console.error("Load surah error:", err);
