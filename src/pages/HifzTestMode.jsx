@@ -1428,10 +1428,35 @@ const HifzTestMode = () => {
                             <button onClick={() => setFontSize(prev => Math.min(120, prev + 4))} className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all active:scale-90"><span className="text-sm font-bold">A+</span></button>
                         </div>
                         <div className="flex items-center gap-4">
-                            <button onClick={toggleListening} className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 shadow-xl ${isListening ? 'bg-red-500 shadow-red-500/40' : 'bg-emerald-600 shadow-emerald-600/30 hover:bg-emerald-500'}`}>
-                                {isListening ? <Pause className="w-5 h-5 text-white fill-current" /> : <Mic className="w-6 h-6 text-white" />}
+                            <button 
+                                onClick={() => setRecitationSpeed(s => s === 1.5 ? 1.0 : s + 0.25 > 1.5 ? 0.75 : s + 0.25)}
+                                className="w-10 h-10 flex flex-col items-center justify-center text-slate-400 hover:text-emerald-400 transition-colors"
+                            >
+                                <FastForward className="w-4 h-4" />
+                                <span className="text-[8px] font-bold mt-0.5">{recitationSpeed}x</span>
                             </button>
-                            <button onClick={() => setIsPaused(!isPaused)} className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-emerald-400 transition-colors">{isPaused ? <Play className="w-5 h-5 fill-current" /> : <Pause className="w-5 h-5" />}</button>
+
+                            <motion.button 
+                                whileTap={{ scale: 0.9 }} 
+                                onClick={toggleListening} 
+                                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 shadow-xl ${isListening ? 'bg-red-500 shadow-red-500/40' : 'bg-emerald-600 shadow-emerald-600/30 hover:bg-emerald-500'}`}
+                            >
+                                {isListening ? (
+                                    <div className="relative flex items-center justify-center">
+                                        <div className="absolute inset-0 bg-white/20 rounded-full animate-ping scale-150" />
+                                        <Pause className="w-5 h-5 text-white fill-current" />
+                                    </div>
+                                ) : (
+                                    <Mic className="w-6 h-6 text-white" />
+                                )}
+                            </motion.button>
+
+                            <button 
+                                onClick={() => setIsPaused(!isPaused)}
+                                className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-emerald-400 transition-colors"
+                            >
+                                {isPaused ? <Play className="w-5 h-5 fill-current" /> : <Pause className="w-5 h-5" />}
+                            </button>
                         </div>
                         <div className="w-12 h-1 rounded-full bg-white/5 sm:hidden" />
                     </div>
