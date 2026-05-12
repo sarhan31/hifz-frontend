@@ -130,6 +130,8 @@ const HifzTestMode = () => {
     const [isDetecting, setIsDetecting] = useState(false);
     const [detectionConfidence, setDetectionConfidence] = useState(0);
     const [liveTranscript, setLiveTranscript] = useState("");
+    const lastResultTimeRef = useRef(Date.now());
+    const watchdogIntervalRef = useRef(null);
     const [showSuccessRipple, setShowSuccessRipple] = useState(false);
     const [detectedSurahName, setDetectedSurahName] = useState("");
     const [detectedAyahNum, setDetectedAyahNum] = useState(1);
@@ -623,29 +625,17 @@ const HifzTestMode = () => {
         // --- Fluency Analysis ---
         if (viewRef.current === 'test' && startDetectedRef.current && !isPaused && !isCompleted) {
             if (timeSinceLastSpeech > 3.0) {
-                // Major break
                 setPauseCount(prev => ({ ...prev, long: prev.long + 1 }));
                 setFluencyScore(prev => Math.max(0, prev - 4));
-                setHesitationHint("Take your time...");
-                setTimeout(() => setHesitationHint(""), 2000);
             } else if (timeSinceLastSpeech > 1.5) {
-                // Hesitation
                 setPauseCount(prev => ({ ...prev, short: prev.short + 1 }));
                 setFluencyScore(prev => Math.max(0, prev - 2));
-                setHesitationHint("Continue...");
-                setTimeout(() => setHesitationHint(""), 2000);
             }
         }
 
-        // Use Ref values to avoid stale closures
         const currentView = viewRef.current;
-        const currentVisibilityMode = visibilityModeRef.current;
-        const currentStrictness = strictnessRef.current;
-        const currentTajweedMode = tajweedModeRef.current;
-
-        // --- STEP 1: Smart Detection Lock ---
+        // STEP 1: Smart Detection Lock (Only in Menu)
         if (currentView === 'menu' && !startDetectedRef.current && !isDetecting) {
-            // Ignore the first 1 second of speech to allow the user to settle
             if (micStartTimeRef.current && Date.now() - micStartTimeRef.current < 1000) return;
 
             clearTimeout(detectTimerRef.current);
@@ -656,55 +646,29 @@ const HifzTestMode = () => {
                 
                 setIsDetecting(true);
                 try {
-                    // Send a larger window (last 12 words) for the new multi-window backend engine
                     const phraseToDetect = transcriptWords.slice(-12).join(" ");
                     const detectRes = await axios.post(`${API_URL}/api/quran/detect`, { phrase: phraseToDetect });
                     
                     if (detectRes.data && detectRes.data.detected) {
-                        const { surah: surahId, ayah, confidence, matchedText, isAmbiguous, possibleSurahs } = detectRes.data;
-                        
-                        if (isAmbiguous) {
-                            setAmbiguousSurahs(possibleSurahs || []);
-                            setDetectionConfidence(0.3);
-                            setDetectedSurahName("");
-                            return;
-                        }
-
-                        setAmbiguousSurahs([]);
-                        const cappedConfidence = Math.min(1.0, confidence);
-                        setDetectionConfidence(cappedConfidence);
-                        
+                        const { surah: surahId, ayah, confidence, matchedText } = detectRes.data;
                         const surah = surahListRef.current.find(s => s.id === surahId);
-                        if (surah) {
-                            setDetectedSurahName(surah.transliteration);
-                            setDetectedAyahNum(ayah);
-                            
-                            // Auto-start threshold: 0.50 is now safe with the cube-weighted scoring
-                            if (cappedConfidence >= 0.50) {
-                                startDetectedRef.current = true;
-                                setShowSuccessRipple(true);
-                                recognitionRef.current?.stop(); 
-                                setTimeout(async () => {
-                                    setLiveTranscript("");
-                                    setDetectionConfidence(0);
-                                    setShowSuccessRipple(false);
-                                    await startSurahTest(surah, ayah, true, matchedText);
-                                }, 600);
-                            }
+                        if (surah && confidence >= 0.50) {
+                            startDetectedRef.current = true;
+                            setShowSuccessRipple(true);
+                            recognitionRef.current?.stop(); 
+                            setTimeout(async () => {
+                                setLiveTranscript("");
+                                setShowSuccessRipple(false);
+                                await startSurahTest(surah, ayah, true, matchedText);
+                            }, 600);
                         }
-                    } else {
-                        setAmbiguousSurahs([]);
                     }
-                } catch (e) {
-                    console.error("Detection error:", e);
-                } finally {
-                    setIsDetecting(false);
-                }
-            }, 200); // Ultra-fast 200ms debounce for "Instant" feel
+                } catch (e) { console.error(e); } finally { setIsDetecting(false); }
+            }, 200);
             return;
         }
 
-        // --- STEP 2: Recitation Tracking Engine (REINFORCED) ---
+        // STEP 2: Tracking Engine (SLIDING WINDOW)
         if (currentView === 'test' && startDetectedRef.current) {
             const allSpokenWords = transcript.split(/\s+/).filter(s => s.trim());
             const currentWords = wordsRef.current;
@@ -712,89 +676,55 @@ const HifzTestMode = () => {
             
             if (cIndex >= currentWords.length) return;
 
-            // --- TRACKING: Process all new words since last match ---
-            // Only process words that are likely to be "stable"
-            const startIndexInTranscript = lastMatchedTranscriptWordIndexRef.current + 1;
-            if (startIndexInTranscript >= allSpokenWords.length) return;
-
-            // Debug: Optional logging for development
-            // console.log("Processing words:", allSpokenWords.slice(startIndexInTranscript));
+            // Analyze only the last 5 words for maximum stability
+            const recentSpoken = allSpokenWords.slice(-5);
+            if (recentSpoken.length === 0) return;
 
             let matchFoundInThisCall = false;
 
-            for (let i = startIndexInTranscript; i < allSpokenWords.length; i++) {
-                const globalTranscriptIndex = i;
-                const spoken = allSpokenWords[i];
+            for (let i = 0; i < recentSpoken.length; i++) {
+                const spoken = recentSpoken[i];
                 const normalizedSpoken = normalizeArabic(spoken);
                 if (!normalizedSpoken || normalizedSpoken.length < 2) continue;
 
-                // --- SEARCH WINDOW (Sticky Logic): Look ahead for a match ---
                 let bestMatchIdx = -1;
-                let bestMatchScore = 0;
-                let bestMatchSimilarity = 0; 
+                let bestMatchScore = -999;
+                let bestMatchSimilarity = 0;
 
-                // --- SEARCH WINDOW: Tightened for better tracking ---
                 for (let qOffset = 0; qOffset < 6; qOffset++) {
                     const targetIdx = cIndex + qOffset;
                     if (targetIdx >= currentWords.length) break;
 
                     const targetWord = currentWords[targetIdx];
-                    const normalizedTarget = normalizeArabic(targetWord.text);
-                    const similarity = calculatePhoneticSimilarity(normalizedSpoken, normalizedTarget);
+                    const similarity = calculatePhoneticSimilarity(normalizedSpoken, normalizeArabic(targetWord.text));
 
-                    // High proximity bonus for the next expected word
-                    const distancePenalty = qOffset * 0.15; 
+                    const distancePenalty = qOffset * 0.20;
                     const currentScore = similarity - distancePenalty;
+                    const threshold = qOffset === 0 ? 0.45 : 0.85; // Very strict for jumps
 
-                    // STRICT threshold for jumping ahead (0.80), lenient for next word (0.55)
-                    const minThreshold = qOffset === 0 ? 0.55 : 0.80;
-
-                    if (currentScore > bestMatchScore && similarity >= minThreshold) {
-                        // --- REINFORCED JUMP PROTECTION: "Anchor Logic" ---
-                        // If jumping forward by more than 1 word, we REQUIRE a second consecutive match
+                    if (currentScore > bestMatchScore && similarity >= threshold) {
+                        // JUMP ANCHOR: Require next word match for jumps > 1
                         if (qOffset > 1) {
-                            const nextSpoken = allSpokenWords[i + 1];
+                            const nextSpoken = recentSpoken[i + 1];
                             const nextTarget = currentWords[targetIdx + 1];
-                            
                             if (nextSpoken && nextTarget) {
                                 const nextSim = calculatePhoneticSimilarity(normalizeArabic(nextSpoken), normalizeArabic(nextTarget.text));
-                                if (nextSim < 0.65) {
-                                    continue; // Reject jump: The following word doesn't match
-                                }
-                            } else if (!nextTarget && qOffset > 1) {
-                                // If jumping to the very last word of the test, allow it if similarity is very high
+                                if (nextSim < 0.60) continue;
+                            } else if (qOffset > 1 && !nextTarget) {
                                 if (similarity < 0.90) continue;
                             } else {
-                                // If jumping and there's no next spoken word yet, wait for more transcript
-                                continue; 
+                                continue; // Wait for context
                             }
                         }
-
                         bestMatchScore = currentScore;
                         bestMatchSimilarity = similarity;
                         bestMatchIdx = targetIdx;
                     }
-                    
                     if (similarity === 1.0 && qOffset === 0) break;
                 }
 
-                // --- Match Threshold ---
                 if (bestMatchIdx !== -1) {
                     matchFoundInThisCall = true;
-                    lastMistakeIndexRef.current = -1; // Reset strike buffer on match
-                    
-                    // Mark Tajweed issues if similarity is not perfect
-                    if (bestMatchSimilarity < 0.90) {
-                        const targetWord = currentWords[bestMatchIdx];
-                        const tajIssue = detectTajweedIssue(normalizedSpoken, normalizeArabic(targetWord.text));
-                        if (tajIssue) {
-                            setPronunciationIssues(prev => [...prev, { ...tajIssue, word: targetWord.text, index: bestMatchIdx }]);
-                            setCurrentPronunciationIssue(tajIssue);
-                            setTimeout(() => setCurrentPronunciationIssue(null), 3000);
-                        }
-                    }
-
-                    // --- JUMP / SKIP HANDLING ---
                     const statusUpdates = {};
                     for (let j = currentIndexRef.current; j <= bestMatchIdx; j++) {
                         statusUpdates[j] = (j === bestMatchIdx) ? "correct" : "skipped";
@@ -802,148 +732,34 @@ const HifzTestMode = () => {
 
                     const advanceAmount = (bestMatchIdx - currentIndexRef.current) + 1;
                     setCorrectCount(prev => prev + advanceAmount);
-                    
                     cIndex = bestMatchIdx + 1;
                     setCurrentIndex(cIndex);
                     currentIndexRef.current = cIndex;
-
-                    // Boost Momentum on correct match
-                    setStreakCount(prev => prev + 1);
-                    setMomentum({ 
-                        text: "On Fire!", 
-                        icon: <Flame className="w-3 h-3 animate-bounce" />, 
-                        color: "text-orange-400" 
-                    });
-
-                    // Ayah Completion Feedback
-                    if (bestMatchIdx > 0 && currentWords[bestMatchIdx].ayahNumber !== currentWords[bestMatchIdx - 1].ayahNumber) {
-                        const feedbacks = ["Masha'Allah", "Great recitation", "Excellent", "Keep going"];
-                        setFeedback(feedbacks[Math.floor(Math.random() * feedbacks.length)]);
-                        setTimeout(() => setFeedback(""), 2000);
-
-                        // Auto-save progress at the end of each Ayah
-                        if (user && selectedSurah) {
-                            axios.post(`${API_URL}/api/bookmarks`, {
-                                user_id: user.id,
-                                surah_id: selectedSurah.id,
-                                ayah_number: currentWords[bestMatchIdx].ayahNumber + 1, // Save the NEXT ayah to start from
-                                juz_number: selectedSurah.juz || 1,
-                                type: 'session'
-                            }, { headers: { Authorization: `Bearer ${session?.access_token}` } }).catch(() => {});
-                        }
-                    }
-                    
                     setWords(prev => prev.map((w, idx) => statusUpdates[idx] ? { ...w, status: statusUpdates[idx] } : w));
-                    lastMatchedTranscriptWordIndexRef.current = globalTranscriptIndex;
 
-                    // Completion Check
                     if (cIndex >= currentWords.length) {
                         const finalAccuracy = getAccuracyValue();
-                        const finalFluency = fluencyScore;
                         setIsCompleted(true);
                         setEndTime(Date.now());
                         setShowModal(true);
                         setIsListening(false);
                         recognitionRef.current?.stop();
-                        saveRecitationSession(finalAccuracy, finalFluency);
+                        saveRecitationSession(finalAccuracy, fluencyScore);
                         return;
                     }
                 }
             }
 
-            // --- IMPROVED MISTAKE LOGIC (Catch-up mechanism with strike buffer) ---
-                    // Increased COOLDOWN (5s) and length requirement (3 chars)
-                    if (latestSpoken.length >= 3 && now - lastMistakeTimeRef.current > 5000) {
-                        const targetWord = currentWords[cIndex];
-                        if (targetWord) {
-                            const normalizedTarget = normalizeArabic(targetWord.text);
-                            const sim = calculatePhoneticSimilarity(normalizeArabic(latestSpoken), normalizedTarget);
-                            
-                            // Only mark as mistake if it's definitely NOT the right word
-                            if (sim < 0.35) {
-                                setMajorMistakes(prev => prev + 1);
-                                setLastMistakeTime(now);
-                                lastMistakeTimeRef.current = now;
-                                setFeedback("Keep focused...");
-                                setTimeout(() => setFeedback(""), 2000);
-                            }
-                        }
-                    }
-                        // Check if user is reciting something MUCH further ahead (Catch-up)
-                        let foundFurtherAhead = false;
-                        const catchUpWindow = 40; // Search ahead 40 words
-
-                        for (let qOffset = 12; qOffset < catchUpWindow; qOffset++) {
-                            const targetIdx = cIndex + qOffset;
-                            if (targetIdx >= currentWords.length) break;
-
-                            const targetWord = currentWords[targetIdx];
-                            // REQUIRE VERY HIGH CONFIDENCE FOR AUTOMATIC JUMP (0.90+)
-                            if (calculatePhoneticSimilarity(normalizeArabic(latestSpoken), normalizeArabic(targetWord.text)) >= 0.90) {
-                                // Found a strong match further ahead! Let's jump.
-                                lastMistakeTimeRef.current = now;
-                                setMajorMistakes(m => m + 1); // Still count as a skip/mistake
-                                
-                                const statusUpdates = {};
-                                for (let j = currentIndexRef.current; j <= targetIdx; j++) {
-                                    statusUpdates[j] = (j === targetIdx) ? "correct" : "skipped";
-                                }
-                                setWords(prev => prev.map((w, idx) => statusUpdates[idx] ? { ...w, status: statusUpdates[idx] } : w));
-                                 
-                                 cIndex = targetIdx + 1;
-                                 setCurrentIndex(cIndex);
-                                 currentIndexRef.current = cIndex;
-                                 lastMatchedTranscriptWordIndexRef.current = latestSpokenIndex;
-                                 foundFurtherAhead = true;
-
-                                 // Auto-save session progress on jump
-                                 if (user && selectedSurah) {
-                                     axios.post(`${API_URL}/api/bookmarks`, {
-                                         user_id: user.id,
-                                         surah_id: selectedSurah.id,
-                                         ayah_number: currentWords[targetIdx]?.ayahNumber || 1,
-                                         juz_number: selectedSurah.juz || 1,
-                                         type: 'session'
-                                     }, { headers: { Authorization: `Bearer ${session?.access_token}` } }).catch(() => {});
-                                 }
-                                 break;
-                            }
-                        }
-
-                        if (!foundFurtherAhead) {
-                            // Strike System: Don't penalize on the first "miss" to account for STT noise
-                            if (lastMistakeIndexRef.current !== latestSpokenIndex) {
-                                lastMistakeIndexRef.current = latestSpokenIndex;
-                                lastMistakeTimeRef.current = now;
-                                return; // Grace period: Skip penalty this time
-                            }
-
-                            lastMistakeTimeRef.current = now;
-                            setMajorMistakes(m => m + 1);
-                            setFluencyScore(prev => Math.max(0, prev - 3)); // Reduced penalty
-                            setMistakeFlash(true);
-                            
-                            // SMOOTH REWIND: Only rewind if they've made multiple mistakes, 
-                            // otherwise just stay at the current word and wait for them to catch up.
-                            if (majorMistakes > 2) {
-                                const rewindIndex = Math.max(0, currentIndexRef.current - 1);
-                                setCurrentIndex(rewindIndex);
-                                currentIndexRef.current = rewindIndex;
-                            }
-                            
-                            setTimeout(() => setMistakeFlash(false), 400);
-
-                            // Auto-save session progress
-                            if (user && selectedSurah) {
-                                axios.post(`${API_URL}/api/bookmarks`, {
-                                    user_id: user.id,
-                                    surah_id: selectedSurah.id,
-                                    ayah_number: currentWords[rewindIndex]?.ayahNumber || 1,
-                                    juz_number: selectedSurah.juz || 1,
-                                    type: 'session'
-                                }, { headers: { Authorization: `Bearer ${session?.access_token}` } }).catch(() => {});
-                            }
-                        }
+            // Simple mistake tracking
+            if (!matchFoundInThisCall && now - lastMistakeTimeRef.current > 6000) {
+                const latest = recentSpoken[recentSpoken.length - 1];
+                if (latest && latest.length >= 3) {
+                    const sim = calculatePhoneticSimilarity(normalizeArabic(latest), normalizeArabic(currentWords[cIndex]?.text || ""));
+                    if (sim < 0.30) {
+                        setMajorMistakes(m => m + 1);
+                        lastMistakeTimeRef.current = now;
+                        setMistakeFlash(true);
+                        setTimeout(() => setMistakeFlash(false), 400);
                     }
                 }
             }
@@ -1030,6 +846,7 @@ const HifzTestMode = () => {
         };
 
         recognition.onresult = (event) => {
+            lastResultTimeRef.current = Date.now(); // Feed the watchdog
             const transcript = Array.from(event.results)
                 .map(result => result[0].transcript)
                 .join(" ");
@@ -1038,6 +855,21 @@ const HifzTestMode = () => {
                 handleSpeechRef.current(transcript);
             }
         };
+
+        // --- WATCHDOG: Restart if engine stalls ---
+        if (watchdogIntervalRef.current) clearInterval(watchdogIntervalRef.current);
+        watchdogIntervalRef.current = setInterval(() => {
+            const now = Date.now();
+            const timeSinceLastResult = now - lastResultTimeRef.current;
+            
+            if (isRecognitionActiveRef.current && timeSinceLastResult > 4000) {
+                console.log("[Watchdog] Engine stall detected. Restarting...");
+                lastResultTimeRef.current = now; // Prevent infinite immediate restarts
+                try {
+                    recognition.stop(); // This will trigger onend -> restart
+                } catch (e) {}
+            }
+        }, 2000);
         
         recognitionRef.current = recognition;
         try {
