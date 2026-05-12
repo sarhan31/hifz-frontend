@@ -132,6 +132,7 @@ const HifzTestMode = () => {
     const [liveTranscript, setLiveTranscript] = useState("");
     const lastResultTimeRef = useRef(Date.now());
     const watchdogIntervalRef = useRef(null);
+    const lastTranscriptLengthRef = useRef(0);
     const [showSuccessRipple, setShowSuccessRipple] = useState(false);
     const [detectedSurahName, setDetectedSurahName] = useState("");
     const [detectedAyahNum, setDetectedAyahNum] = useState(1);
@@ -668,7 +669,7 @@ const HifzTestMode = () => {
             return;
         }
 
-        // STEP 2: Tracking Engine (SLIDING WINDOW)
+        // STEP 2: Tracking Engine (DELTA + SLIDING WINDOW)
         if (currentView === 'test' && startDetectedRef.current) {
             const allSpokenWords = transcript.split(/\s+/).filter(s => s.trim());
             const currentWords = wordsRef.current;
@@ -676,14 +677,22 @@ const HifzTestMode = () => {
             
             if (cIndex >= currentWords.length) return;
 
-            // Analyze only the last 5 words for maximum stability
-            const recentSpoken = allSpokenWords.slice(-5);
-            if (recentSpoken.length === 0) return;
+            // Use delta tracking to avoid re-processing old words
+            // RECOVERY: If engine re-writes transcript and it's shorter than our pointer, reset pointer
+            if (allSpokenWords.length <= lastMatchedTranscriptWordIndexRef.current) {
+                lastMatchedTranscriptWordIndexRef.current = Math.max(-1, allSpokenWords.length - 2);
+            }
+
+            const startIndex = lastMatchedTranscriptWordIndexRef.current + 1;
+            const wordsToProcess = allSpokenWords.slice(startIndex);
+            
+            if (wordsToProcess.length === 0) return;
 
             let matchFoundInThisCall = false;
 
-            for (let i = 0; i < recentSpoken.length; i++) {
-                const spoken = recentSpoken[i];
+            for (let i = 0; i < wordsToProcess.length; i++) {
+                const globalTranscriptIndex = startIndex + i;
+                const spoken = wordsToProcess[i];
                 const normalizedSpoken = normalizeArabic(spoken);
                 if (!normalizedSpoken || normalizedSpoken.length < 2) continue;
 
@@ -691,25 +700,28 @@ const HifzTestMode = () => {
                 let bestMatchScore = -999;
                 let bestMatchSimilarity = 0;
 
-                for (let qOffset = 0; qOffset < 6; qOffset++) {
+                // Tighter window (4 words) for zero-jump stability
+                for (let qOffset = 0; qOffset < 4; qOffset++) {
                     const targetIdx = cIndex + qOffset;
                     if (targetIdx >= currentWords.length) break;
 
                     const targetWord = currentWords[targetIdx];
                     const similarity = calculatePhoneticSimilarity(normalizedSpoken, normalizeArabic(targetWord.text));
 
-                    const distancePenalty = qOffset * 0.20;
+                    const distancePenalty = qOffset * 0.25;
                     const currentScore = similarity - distancePenalty;
-                    const threshold = qOffset === 0 ? 0.45 : 0.85; // Very strict for jumps
+                    
+                    // Stricter thresholds: 0.50 for next word, 0.90 for any jump
+                    const threshold = qOffset === 0 ? 0.50 : 0.90;
 
                     if (currentScore > bestMatchScore && similarity >= threshold) {
                         // JUMP ANCHOR: Require next word match for jumps > 1
                         if (qOffset > 1) {
-                            const nextSpoken = recentSpoken[i + 1];
+                            const nextSpoken = wordsToProcess[i + 1];
                             const nextTarget = currentWords[targetIdx + 1];
                             if (nextSpoken && nextTarget) {
                                 const nextSim = calculatePhoneticSimilarity(normalizeArabic(nextSpoken), normalizeArabic(nextTarget.text));
-                                if (nextSim < 0.60) continue;
+                                if (nextSim < 0.65) continue; // Tighter anchor
                             } else if (qOffset > 1 && !nextTarget) {
                                 if (similarity < 0.90) continue;
                             } else {
@@ -736,6 +748,7 @@ const HifzTestMode = () => {
                     setCurrentIndex(cIndex);
                     currentIndexRef.current = cIndex;
                     setWords(prev => prev.map((w, idx) => statusUpdates[idx] ? { ...w, status: statusUpdates[idx] } : w));
+                    lastMatchedTranscriptWordIndexRef.current = globalTranscriptIndex;
 
                     if (cIndex >= currentWords.length) {
                         const finalAccuracy = getAccuracyValue();
@@ -750,9 +763,9 @@ const HifzTestMode = () => {
                 }
             }
 
-            // Simple mistake tracking
+            // Simple mistake tracking based on the latest spoken word
             if (!matchFoundInThisCall && now - lastMistakeTimeRef.current > 6000) {
-                const latest = recentSpoken[recentSpoken.length - 1];
+                const latest = wordsToProcess[wordsToProcess.length - 1];
                 if (latest && latest.length >= 3) {
                     const sim = calculatePhoneticSimilarity(normalizeArabic(latest), normalizeArabic(currentWords[cIndex]?.text || ""));
                     if (sim < 0.30) {
