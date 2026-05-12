@@ -286,15 +286,12 @@ const HifzTestMode = () => {
             .replace(/ؤ/g, "و") // Normalize Hamza on Waw
             .replace(/ء/g, "") // Remove isolated Hamza
             .replace(/[\u064B-\u065F]/g, "") // Thoroughly remove all tashkeel
-            // Phonetic collapse for noisy speech (STABLE SET)
-            .replace(/[ثسص]/g, "s") 
-            .replace(/[حخ]/g, "h")
-            .replace(/[ذزظ]/g, "z")
-            .replace(/[طق]/g, "k")
-            .replace(/[تد]/g, "t") 
-            .replace(/[غع]/g, "a") 
-            .replace(/[بف]/g, "b")
-            .replace(/[^\u0621-\u064A\s shzktab]/g, "") 
+            // Phonetic collapse: Only for truly ambiguous sounds in recognition
+            .replace(/[ثص]/g, "س") 
+            .replace(/[ظذ]/g, "ز")
+            .replace(/[ط]/g, "ت")
+            .replace(/[ق]/g, "ك")
+            .replace(/[^\u0621-\u064A\s]/g, "") // Keep only Arabic and spaces
             .replace(/\s+/g, " ") 
             .trim();
     };
@@ -716,8 +713,12 @@ const HifzTestMode = () => {
             if (cIndex >= currentWords.length) return;
 
             // --- TRACKING: Process all new words since last match ---
+            // Only process words that are likely to be "stable"
             const startIndexInTranscript = lastMatchedTranscriptWordIndexRef.current + 1;
             if (startIndexInTranscript >= allSpokenWords.length) return;
+
+            // Debug: Optional logging for development
+            // console.log("Processing words:", allSpokenWords.slice(startIndexInTranscript));
 
             let matchFoundInThisCall = false;
 
@@ -732,8 +733,8 @@ const HifzTestMode = () => {
                 let bestMatchScore = 0;
                 let bestMatchSimilarity = 0; 
 
-                // Window size reduced for high precision (sticky tracking)
-                for (let qOffset = 0; qOffset < 8; qOffset++) {
+                // --- SEARCH WINDOW: Tightened for better tracking ---
+                for (let qOffset = 0; qOffset < 6; qOffset++) {
                     const targetIdx = cIndex + qOffset;
                     if (targetIdx >= currentWords.length) break;
 
@@ -741,12 +742,12 @@ const HifzTestMode = () => {
                     const normalizedTarget = normalizeArabic(targetWord.text);
                     const similarity = calculatePhoneticSimilarity(normalizedSpoken, normalizedTarget);
 
-                    // Proximity bonus: Prefer the immediate next word
-                    const distancePenalty = qOffset * 0.08; 
+                    // High proximity bonus for the next expected word
+                    const distancePenalty = qOffset * 0.15; 
                     const currentScore = similarity - distancePenalty;
 
-                    // STRICT threshold for lookahead (0.75), lenient for immediate (0.60)
-                    const minThreshold = qOffset === 0 ? 0.60 : 0.75;
+                    // STRICT threshold for jumping ahead (0.80), lenient for next word (0.55)
+                    const minThreshold = qOffset === 0 ? 0.55 : 0.80;
 
                     if (currentScore > bestMatchScore && similarity >= minThreshold) {
                         // VALIDATION: If jumping more than 2 words, check if the NEXT spoken word also matches
@@ -840,14 +841,23 @@ const HifzTestMode = () => {
             }
 
             // --- IMPROVED MISTAKE LOGIC (Catch-up mechanism with strike buffer) ---
-            if (!matchFoundInThisCall && allSpokenWords.length > 0) {
-                const latestSpokenIndex = allSpokenWords.length - 1;
-                if (latestSpokenIndex > lastMatchedTranscriptWordIndexRef.current) {
-                    const latestSpoken = allSpokenWords[latestSpokenIndex];
-                    const now = Date.now();
-
-                    // Increased COOLDOWN and length requirement to prevent false mistake triggers
-                    if (latestSpoken.length >= 3 && now - lastMistakeTimeRef.current > 4000) {
+                    // Increased COOLDOWN (5s) and length requirement (3 chars)
+                    if (latestSpoken.length >= 3 && now - lastMistakeTimeRef.current > 5000) {
+                        const targetWord = currentWords[cIndex];
+                        if (targetWord) {
+                            const normalizedTarget = normalizeArabic(targetWord.text);
+                            const sim = calculatePhoneticSimilarity(normalizeArabic(latestSpoken), normalizedTarget);
+                            
+                            // Only mark as mistake if it's definitely NOT the right word
+                            if (sim < 0.35) {
+                                setMajorMistakes(prev => prev + 1);
+                                setLastMistakeTime(now);
+                                lastMistakeTimeRef.current = now;
+                                setFeedback("Keep focused...");
+                                setTimeout(() => setFeedback(""), 2000);
+                            }
+                        }
+                    }
                         // Check if user is reciting something MUCH further ahead (Catch-up)
                         let foundFurtherAhead = false;
                         const catchUpWindow = 40; // Search ahead 40 words
