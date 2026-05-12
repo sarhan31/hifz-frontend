@@ -677,62 +677,51 @@ const HifzTestMode = () => {
             
             if (cIndex >= currentWords.length) return;
 
-            // Use delta tracking to avoid re-processing old words
-            // RECOVERY: If engine re-writes transcript and it's shorter than our pointer, reset pointer
-            if (allSpokenWords.length <= lastMatchedTranscriptWordIndexRef.current) {
-                lastMatchedTranscriptWordIndexRef.current = Math.max(-1, allSpokenWords.length - 2);
-            }
+            // --- ELITE PERFORMANCE ENGINE (DELTA + SINGLE LOCK) ---
+            if (cIndex >= currentWords.length) return;
 
             const startIndex = lastMatchedTranscriptWordIndexRef.current + 1;
             const wordsToProcess = allSpokenWords.slice(startIndex);
-            
             if (wordsToProcess.length === 0) return;
+
+            // RECOVERY: If we are stuck for more than 4 words, allow a broader re-sync
+            const syncWindow = (allSpokenWords.length - lastMatchedTranscriptWordIndexRef.current > 4) ? 8 : 4;
 
             let matchFoundInThisCall = false;
 
             for (let i = 0; i < wordsToProcess.length; i++) {
-                const globalTranscriptIndex = startIndex + i;
                 const spoken = wordsToProcess[i];
                 const normalizedSpoken = normalizeArabic(spoken);
-                if (!normalizedSpoken || normalizedSpoken.length < 2) continue;
+                if (!normalizedSpoken || normalizedSpoken.length < 1) continue;
 
                 let bestMatchIdx = -1;
-                let bestMatchScore = -999;
+                let bestMatchScore = -100;
                 let bestMatchSimilarity = 0;
 
-                // Tighter window (4 words) for zero-jump stability
-                for (let qOffset = 0; qOffset < 4; qOffset++) {
+                // Priority loop: Check immediate word first with high sensitivity
+                for (let qOffset = 0; qOffset < syncWindow; qOffset++) {
                     const targetIdx = cIndex + qOffset;
                     if (targetIdx >= currentWords.length) break;
 
                     const targetWord = currentWords[targetIdx];
-                    const similarity = calculatePhoneticSimilarity(normalizedSpoken, normalizeArabic(targetWord.text));
+                    // CACHE CHECK: Use pre-normalized text if available (pseudo-optimization)
+                    const normalizedTarget = normalizeArabic(targetWord.text);
+                    const similarity = calculatePhoneticSimilarity(normalizedSpoken, normalizedTarget);
 
-                    const distancePenalty = qOffset * 0.25;
+                    // Dynamic Penalty: Heavier as we move further away to prevent "jumps"
+                    const distancePenalty = qOffset * 0.35; 
                     const currentScore = similarity - distancePenalty;
                     
-                    // Stricter thresholds: 0.50 for next word, 0.90 for any jump
-                    const threshold = qOffset === 0 ? 0.50 : 0.90;
+                    // THRESHOLD: Lenient for the VERY NEXT word (0.45), Strict for jumps (0.85)
+                    const minThreshold = qOffset === 0 ? 0.45 : 0.85;
 
-                    if (currentScore > bestMatchScore && similarity >= threshold) {
-                        // JUMP ANCHOR: Require next word match for jumps > 1
-                        if (qOffset > 1) {
-                            const nextSpoken = wordsToProcess[i + 1];
-                            const nextTarget = currentWords[targetIdx + 1];
-                            if (nextSpoken && nextTarget) {
-                                const nextSim = calculatePhoneticSimilarity(normalizeArabic(nextSpoken), normalizeArabic(nextTarget.text));
-                                if (nextSim < 0.65) continue; // Tighter anchor
-                            } else if (qOffset > 1 && !nextTarget) {
-                                if (similarity < 0.90) continue;
-                            } else {
-                                continue; // Wait for context
-                            }
-                        }
+                    if (currentScore > bestMatchScore && similarity >= minThreshold) {
                         bestMatchScore = currentScore;
                         bestMatchSimilarity = similarity;
                         bestMatchIdx = targetIdx;
                     }
-                    if (similarity === 1.0 && qOffset === 0) break;
+                    // If we find a perfect match at current position, stop looking
+                    if (similarity >= 0.95 && qOffset === 0) break;
                 }
 
                 if (bestMatchIdx !== -1) {
@@ -809,17 +798,24 @@ const HifzTestMode = () => {
     const startRecognition = () => {
         if (recognitionRef.current) stopRecognition();
 
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) return;
-
-        // CLEAR STATE BEFORE STARTING
-        setLiveTranscript("");
-        lastProcessedTranscriptRef.current = "";
-        setDetectedSurahName("");
-        setDetectionConfidence(0);
-        if (viewRef.current === 'menu') {
-            startDetectedRef.current = false;
+        const SpeechRecognition = window.SpeechRecognition || 
+                                window.webkitSpeechRecognition || 
+                                window.mozSpeechRecognition || 
+                                window.msSpeechRecognition;
+        
+        if (!SpeechRecognition) {
+            setError("Speech recognition is not supported in this browser. Please use Chrome or Safari.");
+            return;
         }
+
+        // --- PRE-INITIALIZATION ---
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (AudioContext) {
+                const ctx = new AudioContext();
+                if (ctx.state === 'suspended') ctx.resume();
+            }
+        } catch (e) {}
 
         const recognition = new SpeechRecognition();
         recognition.continuous = true;
