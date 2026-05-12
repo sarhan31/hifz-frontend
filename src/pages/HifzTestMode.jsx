@@ -705,7 +705,11 @@ const HifzTestMode = () => {
             // --- ELITE PERFORMANCE ENGINE (DELTA + SINGLE LOCK) ---
             if (cIndex >= currentWords.length) return;
 
-            const startIndex = lastMatchedTranscriptWordIndexRef.current + 1;
+            // SCALABILITY FIX 3: Guard against a stale or out-of-range pointer.
+            // After a recognition restart the transcript resets to a shorter array.
+            // Clamp the start index so we never slice past the end of the new array.
+            const rawStartIndex = lastMatchedTranscriptWordIndexRef.current + 1;
+            const startIndex = Math.min(rawStartIndex, allSpokenWords.length);
             const wordsToProcess = allSpokenWords.slice(startIndex);
             if (wordsToProcess.length === 0) return;
 
@@ -876,8 +880,14 @@ const HifzTestMode = () => {
                 // Use a small delay to allow the browser to clean up the previous session
                 setTimeout(() => {
                     if (isRecognitionActiveRef.current) {
-                        try { 
-                            recognitionRef.current?.start(); 
+                        try {
+                            // SCALABILITY FIX 1: Reset the transcript pointer on every restart.
+                            // Each call to .start() gives the browser a fresh event.results list
+                            // (indices reset to 0). If we don't reset this ref, startIndex in
+                            // handleSpeech runs past the new transcript → engine processes nothing.
+                            lastMatchedTranscriptWordIndexRef.current = -1;
+                            lastProcessedTranscriptRef.current = "";
+                            recognitionRef.current?.start();
                         } catch (e) {
                             // If it fails, try one more time or just wait for next onend
                         }
@@ -898,12 +908,32 @@ const HifzTestMode = () => {
 
         recognition.onresult = (event) => {
             lastResultTimeRef.current = Date.now(); // Feed the watchdog
-            const transcript = Array.from(event.results)
+
+            // SCALABILITY FIX 2: Cap the transcript to the last MAX_SPOKEN_WORDS.
+            // event.results accumulates all results within a session. For long or
+            // fast recitations this can grow to hundreds of entries, causing O(n)
+            // work on every single result event. We cap it to a fixed window.
+            const MAX_SPOKEN_WORDS = 60;
+            const allWords = Array.from(event.results)
                 .map(result => result[0].transcript)
-                .join(" ");
-            
-            if (handleSpeechRef.current) {
-                handleSpeechRef.current(transcript);
+                .join(" ")
+                .split(/\s+/)
+                .filter(Boolean);
+
+            // If accumulated words exceed the cap, trim the START and shift the
+            // matched-index pointer down by the same amount so relative positions stay valid.
+            if (allWords.length > MAX_SPOKEN_WORDS) {
+                const excess = allWords.length - MAX_SPOKEN_WORDS;
+                // Adjust pointer so it stays valid inside the trimmed slice
+                lastMatchedTranscriptWordIndexRef.current = Math.max(
+                    -1,
+                    lastMatchedTranscriptWordIndexRef.current - excess
+                );
+                const transcript = allWords.slice(excess).join(" ");
+                if (handleSpeechRef.current) handleSpeechRef.current(transcript);
+            } else {
+                const transcript = allWords.join(" ");
+                if (handleSpeechRef.current) handleSpeechRef.current(transcript);
             }
         };
 
