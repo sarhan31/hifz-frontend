@@ -750,12 +750,23 @@ const HifzTestMode = () => {
                     const minThreshold = qOffset === 0 ? 0.55 : 0.80;
 
                     if (currentScore > bestMatchScore && similarity >= minThreshold) {
-                        // VALIDATION: If jumping more than 2 words, check if the NEXT spoken word also matches
-                        if (qOffset > 2 && i + 1 < allSpokenWords.length) {
-                            const nextSpoken = normalizeArabic(allSpokenWords[i + 1]);
-                            const nextTarget = normalizeArabic(currentWords[targetIdx + 1]?.text || "");
-                            if (calculatePhoneticSimilarity(nextSpoken, nextTarget) < 0.60) {
-                                continue; // Reject the jump, it's likely a false positive
+                        // --- REINFORCED JUMP PROTECTION: "Anchor Logic" ---
+                        // If jumping forward by more than 1 word, we REQUIRE a second consecutive match
+                        if (qOffset > 1) {
+                            const nextSpoken = allSpokenWords[i + 1];
+                            const nextTarget = currentWords[targetIdx + 1];
+                            
+                            if (nextSpoken && nextTarget) {
+                                const nextSim = calculatePhoneticSimilarity(normalizeArabic(nextSpoken), normalizeArabic(nextTarget.text));
+                                if (nextSim < 0.65) {
+                                    continue; // Reject jump: The following word doesn't match
+                                }
+                            } else if (!nextTarget && qOffset > 1) {
+                                // If jumping to the very last word of the test, allow it if similarity is very high
+                                if (similarity < 0.90) continue;
+                            } else {
+                                // If jumping and there's no next spoken word yet, wait for more transcript
+                                continue; 
                             }
                         }
 
@@ -995,7 +1006,16 @@ const HifzTestMode = () => {
         recognition.onend = () => {
             // Auto-restart if we're still in a state where we should be listening
             if (isRecognitionActiveRef.current && (viewRef.current === 'test' || viewRef.current === 'menu')) {
-                try { recognition.start(); } catch (e) {}
+                // Use a small delay to allow the browser to clean up the previous session
+                setTimeout(() => {
+                    if (isRecognitionActiveRef.current) {
+                        try { 
+                            recognitionRef.current?.start(); 
+                        } catch (e) {
+                            // If it fails, try one more time or just wait for next onend
+                        }
+                    }
+                }, 300);
             } else {
                 setIsListening(false);
                 isRecognitionActiveRef.current = false;
