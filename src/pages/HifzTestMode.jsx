@@ -294,30 +294,6 @@ const HifzTestMode = () => {
         }
     }, [surahList, searchParams, location.state]);
 
-    const toggleBookmark = async () => {
-        if (!user || !selectedSurah) return;
-        try {
-            if (isBookmarked) {
-                const bookmark = bookmarks.find(b => b.surah_id === selectedSurah.id);
-                if (bookmark) {
-                    await axios.delete(`${API_URL}/api/bookmarks/${bookmark.id}`, { headers: { Authorization: `Bearer ${session?.access_token}` } });
-                    setBookmarks(prev => prev.filter(b => b.id !== bookmark.id));
-                    setIsBookmarked(false);
-                }
-            } else {
-                const res = await axios.post(`${API_URL}/api/bookmarks`, {
-                    user_id: user.id,
-                    surah_id: selectedSurah.id,
-                    ayah_number: currentIndex + 1,
-                    type: 'manual'
-                }, { headers: { Authorization: `Bearer ${session?.access_token}` } });
-                setBookmarks(prev => [...prev, res.data]);
-                setIsBookmarked(true);
-            }
-        } catch (err) {
-            console.error("Bookmark error:", err);
-        }
-    };
 
     useEffect(() => {
         if (selectedSurah) {
