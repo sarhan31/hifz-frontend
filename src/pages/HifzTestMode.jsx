@@ -133,6 +133,8 @@ const HifzTestMode = () => {
     const lastResultTimeRef = useRef(Date.now());
     const watchdogIntervalRef = useRef(null);
     const lastTranscriptLengthRef = useRef(0);
+    const consecutiveMatchCountRef = useRef(0);
+    const [isBookmarked, setIsBookmarked] = useState(false);
     const [showSuccessRipple, setShowSuccessRipple] = useState(false);
     const [detectedSurahName, setDetectedSurahName] = useState("");
     const [detectedAyahNum, setDetectedAyahNum] = useState(1);
@@ -275,6 +277,53 @@ const HifzTestMode = () => {
             }
         }
     }, [currentIndex, isCompleted, view, user, selectedSurah, words, session]);
+
+    // Handle incoming URL params
+    useEffect(() => {
+        if (!surahList.length) return;
+        const surahParam = searchParams.get('surah');
+        if (surahParam) {
+            const surah = surahList.find(s => s.id === Number(surahParam));
+            if (surah) startSurahTest(surah);
+        }
+
+        if (location.state?.from === 'strength' && location.state?.data) {
+            setStrengthData(location.state.data);
+            setView('strength');
+            navigate(location.pathname, { replace: true });
+        }
+    }, [surahList, searchParams, location.state]);
+
+    const toggleBookmark = async () => {
+        if (!user || !selectedSurah) return;
+        try {
+            if (isBookmarked) {
+                const bookmark = bookmarks.find(b => b.surah_id === selectedSurah.id);
+                if (bookmark) {
+                    await axios.delete(`${API_URL}/api/bookmarks/${bookmark.id}`, { headers: { Authorization: `Bearer ${session?.access_token}` } });
+                    setBookmarks(prev => prev.filter(b => b.id !== bookmark.id));
+                    setIsBookmarked(false);
+                }
+            } else {
+                const res = await axios.post(`${API_URL}/api/bookmarks`, {
+                    user_id: user.id,
+                    surah_id: selectedSurah.id,
+                    ayah_number: currentIndex + 1,
+                    type: 'manual'
+                }, { headers: { Authorization: `Bearer ${session?.access_token}` } });
+                setBookmarks(prev => [...prev, res.data]);
+                setIsBookmarked(true);
+            }
+        } catch (err) {
+            console.error("Bookmark error:", err);
+        }
+    };
+
+    useEffect(() => {
+        if (selectedSurah) {
+            setIsBookmarked(bookmarks.some(b => b.surah_id === selectedSurah.id));
+        }
+    }, [selectedSurah, bookmarks]);
 
     // --- Helpers ---
 
@@ -716,6 +765,20 @@ const HifzTestMode = () => {
                     const minThreshold = qOffset === 0 ? 0.45 : 0.85;
 
                     if (currentScore > bestMatchScore && similarity >= minThreshold) {
+                        // --- ELITE JUMP PROTECTION: Momentum Anchor ---
+                        // Only allow jumping if we've already matched 2+ words in a row
+                        if (qOffset > 1) {
+                            if (consecutiveMatchCountRef.current < 2) continue; // Deny jump: low momentum
+                            
+                            const nextSpoken = wordsToProcess[i + 1];
+                            const nextTarget = currentWords[targetIdx + 1];
+                            if (nextSpoken && nextTarget) {
+                                const nextSim = calculatePhoneticSimilarity(normalizeArabic(nextSpoken), normalizeArabic(nextTarget.text));
+                                if (nextSim < 0.70) continue; 
+                            } else {
+                                continue; 
+                            }
+                        }
                         bestMatchScore = currentScore;
                         bestMatchSimilarity = similarity;
                         bestMatchIdx = targetIdx;
@@ -726,6 +789,7 @@ const HifzTestMode = () => {
 
                 if (bestMatchIdx !== -1) {
                     matchFoundInThisCall = true;
+                    consecutiveMatchCountRef.current += 1;
                     const statusUpdates = {};
                     for (let j = currentIndexRef.current; j <= bestMatchIdx; j++) {
                         statusUpdates[j] = (j === bestMatchIdx) ? "correct" : "skipped";
@@ -754,6 +818,7 @@ const HifzTestMode = () => {
 
             // Simple mistake tracking based on the latest spoken word
             if (!matchFoundInThisCall && now - lastMistakeTimeRef.current > 6000) {
+                consecutiveMatchCountRef.current = 0; // Reset momentum on miss
                 const latest = wordsToProcess[wordsToProcess.length - 1];
                 if (latest && latest.length >= 3) {
                     const sim = calculatePhoneticSimilarity(normalizeArabic(latest), normalizeArabic(currentWords[cIndex]?.text || ""));
@@ -1347,13 +1412,21 @@ const HifzTestMode = () => {
                                 </motion.div>
                             )}
                         </AnimatePresence>
-                        <h1 className="text-lg font-bold text-white tracking-tight leading-none">{selectedSurah.transliteration}</h1>
-                        <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">
-                            Ayah {currentAyahNum} / {totalAyahs}
-                        </p>
+                        <div className="flex flex-col items-center">
+                            <h1 className="text-lg font-bold text-white tracking-tight leading-none">{selectedSurah.transliteration}</h1>
+                            <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">
+                                Ayah {currentAyahNum} / {totalAyahs}
+                            </p>
+                        </div>
                     </div>
 
                     <div className="flex items-center gap-2">
+                        <button 
+                            onClick={toggleBookmark}
+                            className={`p-3 glass-card hover:bg-white/10 active:scale-90 transition-all ${isBookmarked ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'text-slate-400'}`}
+                        >
+                            <Bookmark className={`w-5 h-5 ${isBookmarked ? 'fill-current' : ''}`} />
+                        </button>
                         <div className="flex flex-col items-end px-2">
                             <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Confidence</span>
                             <span className="text-xs font-black text-white">{fluencyScore}%</span>
