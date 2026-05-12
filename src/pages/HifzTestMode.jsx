@@ -739,6 +739,7 @@ const HifzTestMode = () => {
             let matchFoundInThisCall = false;
 
             for (let i = 0; i < wordsToProcess.length; i++) {
+                const globalTranscriptIndex = startIndex + i;
                 const spoken = wordsToProcess[i];
                 const normalizedSpoken = normalizeArabic(spoken);
                 if (!normalizedSpoken || normalizedSpoken.length < 1) continue;
@@ -1352,11 +1353,9 @@ const HifzTestMode = () => {
         const currentAyahNum = words[currentIndex]?.ayahNumber || 1;
         const totalAyahs = selectedSurah?.total_verses || 0;
         const progressPercent = totalWords > 0 ? (currentIndex / totalWords) * 100 : 0;
-        const totalMistakes = majorMistakes + minorMistakes;
         const accuracy = getAccuracyValue();
-        const effectiveEndTime = endTime || (isCompleted && startTime ? Date.now() : null);
-        const durationSeconds = startTime && effectiveEndTime ? Math.max(1, Math.round((effectiveEndTime - startTime) / 1000)) : 0;
-        const wordsPerMinute = durationSeconds > 0 ? Math.round((correctCount / durationSeconds) * 60) : 0;
+        const totalMistakes = majorMistakes + minorMistakes;
+        const wordsPerMinute = Math.round((correctCount / (Math.max(1, Math.round(((endTime || (isCompleted && startTime ? Date.now() : null)) - startTime) / 1000))) || 1) * 60);
 
         const ayahs = {};
         words.forEach((word, index) => {
@@ -1367,13 +1366,8 @@ const HifzTestMode = () => {
 
         return (
             <div className="min-h-screen flex flex-col relative overflow-x-hidden font-sans">
-                {/* Thin Progress Bar at Top */}
                 <div className="fixed top-0 left-0 right-0 h-1 bg-slate-900 z-[70]">
-                    <motion.div 
-                        initial={{ width: 0 }}
-                        animate={{ width: `${progressPercent}%` }}
-                        className="h-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"
-                    />
+                    <motion.div initial={{ width: 0 }} animate={{ width: `${progressPercent}%` }} className="h-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
                 </div>
 
                 <header className="fixed top-0 inset-x-0 z-[60] bg-slate-950/90 backdrop-blur-xl border-b border-white/5 px-4 h-16 flex items-center justify-between">
@@ -1386,32 +1380,12 @@ const HifzTestMode = () => {
                         setLiveTranscript("");
                         setDetectedSurahName("");
                         setDetectionConfidence(0);
-                        startRecognition(); // Restart for menu detection
+                        startRecognition(); 
                     }} className="p-3 glass-card hover:bg-white/10 active:scale-90 transition-all">
                         <ArrowLeft className="w-5 h-5 text-slate-400" />
                     </button>
                     
                     <div className="text-center relative">
-                        {/* Real-time Fluency Indicator */}
-                        <div className="absolute -top-1 left-1/2 -translate-x-1/2 flex items-center gap-1.5 whitespace-nowrap">
-                            <div className={`w-1.5 h-1.5 rounded-full ${flowStatus === 'smooth' ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : flowStatus === 'focus' ? 'bg-amber-500 shadow-[0_0_8px_#f59e0b]' : 'bg-red-500 shadow-[0_0_8px_#ef4444]'}`} />
-                            <span className={`text-[8px] font-black uppercase tracking-widest ${flowStatus === 'smooth' ? 'text-emerald-400' : flowStatus === 'focus' ? 'text-amber-400' : 'text-red-400'}`}>
-                                {flowStatus === 'smooth' ? 'Smooth' : flowStatus === 'focus' ? 'Needs Focus' : 'Struggling'}
-                            </span>
-                        </div>
-
-                        <AnimatePresence>
-                            {feedback && (
-                                <motion.div 
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: -20 }}
-                                    exit={{ opacity: 0 }}
-                                    className="absolute inset-x-0 -top-6 whitespace-nowrap text-emerald-400 font-bold text-xs"
-                                >
-                                    {feedback}
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
                         <div className="flex flex-col items-center">
                             <h1 className="text-lg font-bold text-white tracking-tight leading-none">{selectedSurah.transliteration}</h1>
                             <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">
@@ -1421,19 +1395,13 @@ const HifzTestMode = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <button 
-                            onClick={toggleBookmark}
-                            className={`p-3 glass-card hover:bg-white/10 active:scale-90 transition-all ${isBookmarked ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'text-slate-400'}`}
-                        >
+                        <button onClick={toggleBookmark} className={`p-3 glass-card hover:bg-white/10 active:scale-90 transition-all ${isBookmarked ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'text-slate-400'}`}>
                             <Bookmark className={`w-5 h-5 ${isBookmarked ? 'fill-current' : ''}`} />
                         </button>
                         <div className="flex flex-col items-end px-2">
                             <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Confidence</span>
                             <span className="text-xs font-black text-white">{fluencyScore}%</span>
                         </div>
-                        <button onClick={() => setShowSettings(!showSettings)} className="p-3 glass-card hover:bg-white/10 active:scale-90 transition-all">
-                            <Settings className="w-5 h-5 text-slate-400" />
-                        </button>
                     </div>
                 </header>
 
@@ -1443,81 +1411,32 @@ const HifzTestMode = () => {
                             <React.Fragment key={ayah.id}>
                                 {ayah.words.map((word) => (
                                     <div key={word.id} ref={el => { if (word.globalIndex === currentIndex) ayahRefs.current[ayah.id] = el; }}>
-                                        <WordItem 
-                                            word={word} 
-                                            currentIndex={currentIndex} 
-                                            visibilityMode={visibilityMode} 
-                                            isFlashing={mistakeFlash && word.globalIndex === currentIndex}
-                                            showHint={showHint}
-                                            fontSize={fontSize}
-                                        />
+                                        <WordItem word={word} currentIndex={currentIndex} visibilityMode={visibilityMode} isFlashing={mistakeFlash && word.globalIndex === currentIndex} showHint={showHint} fontSize={fontSize} />
                                     </div>
                                 ))}
-                                <span className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-emerald-500/30 text-emerald-500/60 font-arabic text-xs mx-1 translate-y-2">
-                                    {ayah.id}
-                                </span>
+                                <span className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-emerald-500/30 text-emerald-500/60 font-arabic text-xs mx-1 translate-y-2">{ayah.id}</span>
                             </React.Fragment>
                         ))}
                     </div>
                 </main>
 
-                {/* Recitation Control Bar */}
                 <div className="fixed bottom-0 inset-x-0 h-28 bg-gradient-to-t from-black via-black/90 to-transparent flex items-center justify-center z-[60] px-4 pointer-events-none pb-4">
                     <div className="w-full max-w-[460px] flex items-center justify-between pointer-events-auto bg-slate-900/90 backdrop-blur-3xl rounded-3xl border border-white/10 p-3 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-                        {/* Zoom Controls */}
                         <div className="flex items-center gap-1 bg-white/5 p-1 rounded-2xl border border-white/5">
-                            <button 
-                                onClick={() => setFontSize(prev => Math.max(32, prev - 4))}
-                                className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all active:scale-90"
-                            >
-                                <span className="text-sm font-bold">A-</span>
-                            </button>
+                            <button onClick={() => setFontSize(prev => Math.max(32, prev - 4))} className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all active:scale-90"><span className="text-sm font-bold">A-</span></button>
                             <div className="px-1 text-[8px] font-black text-slate-500 uppercase tracking-tighter w-8 text-center">{fontSize}</div>
-                            <button 
-                                onClick={() => setFontSize(prev => Math.min(120, prev + 4))}
-                                className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all active:scale-90"
-                            >
-                                <span className="text-sm font-bold">A+</span>
-                            </button>
+                            <button onClick={() => setFontSize(prev => Math.min(120, prev + 4))} className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all active:scale-90"><span className="text-sm font-bold">A+</span></button>
                         </div>
-
                         <div className="flex items-center gap-4">
-                            <button 
-                                onClick={() => setRecitationSpeed(s => s === 1.5 ? 1.0 : s + 0.25 > 1.5 ? 0.75 : s + 0.25)}
-                                className="w-10 h-10 flex flex-col items-center justify-center text-slate-400 hover:text-emerald-400 transition-colors"
-                            >
-                                <FastForward className="w-4 h-4" />
-                                <span className="text-[8px] font-bold mt-0.5">{recitationSpeed}x</span>
+                            <button onClick={toggleListening} className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 shadow-xl ${isListening ? 'bg-red-500 shadow-red-500/40' : 'bg-emerald-600 shadow-emerald-600/30 hover:bg-emerald-500'}`}>
+                                {isListening ? <Pause className="w-5 h-5 text-white fill-current" /> : <Mic className="w-6 h-6 text-white" />}
                             </button>
-
-                            <motion.button 
-                                whileTap={{ scale: 0.9 }} 
-                                onClick={toggleListening} 
-                                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 shadow-xl ${isListening ? 'bg-red-500 shadow-red-500/40' : 'bg-emerald-600 shadow-emerald-600/30 hover:bg-emerald-500'}`}
-                            >
-                                {isListening ? (
-                                    <div className="relative flex items-center justify-center">
-                                        <div className="absolute inset-0 bg-white/20 rounded-full animate-ping scale-150" />
-                                        <Pause className="w-5 h-5 text-white fill-current" />
-                                    </div>
-                                ) : (
-                                    <Mic className="w-6 h-6 text-white" />
-                                )}
-                            </motion.button>
-
-                            <button 
-                                onClick={() => setIsPaused(!isPaused)}
-                                className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-emerald-400 transition-colors"
-                            >
-                                {isPaused ? <Play className="w-5 h-5 fill-current" /> : <Pause className="w-5 h-5" />}
-                            </button>
+                            <button onClick={() => setIsPaused(!isPaused)} className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-emerald-400 transition-colors">{isPaused ? <Play className="w-5 h-5 fill-current" /> : <Pause className="w-5 h-5" />}</button>
                         </div>
-
-                        <div className="w-12 h-1 rounded-full bg-white/5 sm:hidden" /> {/* Visual spacing */}
+                        <div className="w-12 h-1 rounded-full bg-white/5 sm:hidden" />
                     </div>
                 </div>
 
-                {/* Session Analytics Dashboard */}
                 <AnimatePresence>
                     {isCompleted && showModal && (
                         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-2xl flex items-center justify-center z-[100] p-4 overflow-y-auto">
