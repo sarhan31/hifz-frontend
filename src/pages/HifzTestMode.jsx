@@ -947,6 +947,7 @@ const HifzTestMode = () => {
         }
     };
 
+
     // --- Views ---
 
     const renderMenu = () => (
@@ -1331,7 +1332,8 @@ const HifzTestMode = () => {
         const progressPercent = totalWords > 0 ? (currentIndex / totalWords) * 100 : 0;
         const accuracy = getAccuracyValue();
         const totalMistakes = majorMistakes + minorMistakes;
-        const wordsPerMinute = Math.round((correctCount / (Math.max(1, Math.round(((endTime || (isCompleted && startTime ? Date.now() : null)) - startTime) / 1000))) || 1) * 60);
+        const durationSeconds = Math.max(1, Math.round(((endTime || (isCompleted && startTime ? Date.now() : null)) - (startTime || 0)) / 1000));
+        const wordsPerMinute = Math.round((correctCount / durationSeconds) * 60);
 
         const ayahs = {};
         words.forEach((word, index) => {
