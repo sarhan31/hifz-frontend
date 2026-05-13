@@ -742,22 +742,26 @@ const HifzTestMode = () => {
                     const distancePenalty = qOffset * 0.35; 
                     const currentScore = similarity - distancePenalty;
                     
-                    // THRESHOLD: Lenient for the VERY NEXT word (0.45), Strict for jumps (0.85)
-                    const minThreshold = qOffset === 0 ? 0.45 : 0.85;
+                    // THRESHOLD: Lenient for the VERY NEXT word (0.50), Strict for skips (0.85), Very strict for jumps (0.90)
+                    const minThreshold = qOffset === 0 ? 0.50 : (qOffset === 1 ? 0.85 : 0.90);
 
                     if (currentScore > bestMatchScore && similarity >= minThreshold) {
                         // --- ELITE JUMP PROTECTION: Momentum Anchor ---
-                        // Only allow jumping if we've already matched 2+ words in a row
-                        if (qOffset > 1) {
-                            if (consecutiveMatchCountRef.current < 2) continue; // Deny jump: low momentum
+                        // Only allow jumping if we've already matched some words in a row
+                        if (qOffset > 0) {
+                            if (consecutiveMatchCountRef.current < 1) continue; // Deny any skip if no momentum
                             
-                            const nextSpoken = wordsToProcess[i + 1];
-                            const nextTarget = currentWords[targetIdx + 1];
-                            if (nextSpoken && nextTarget) {
-                                const nextSim = calculatePhoneticSimilarity(normalizeArabic(nextSpoken), normalizeArabic(nextTarget.text));
-                                if (nextSim < 0.70) continue; 
-                            } else {
-                                continue; 
+                            if (qOffset > 1) {
+                                if (consecutiveMatchCountRef.current < 2) continue; // Deny jump: low momentum
+                                
+                                const nextSpoken = wordsToProcess[i + 1];
+                                const nextTarget = currentWords[targetIdx + 1];
+                                if (nextSpoken && nextTarget) {
+                                    const nextSim = calculatePhoneticSimilarity(normalizeArabic(nextSpoken), normalizeArabic(nextTarget.text));
+                                    if (nextSim < 0.85) continue; 
+                                } else {
+                                    continue; 
+                                }
                             }
                         }
                         bestMatchScore = currentScore;
@@ -798,16 +802,22 @@ const HifzTestMode = () => {
             }
 
             // Simple mistake tracking based on the latest spoken word
-            if (!matchFoundInThisCall && now - lastMistakeTimeRef.current > 6000) {
-                consecutiveMatchCountRef.current = 0; // Reset momentum on miss
-                const latest = wordsToProcess[wordsToProcess.length - 1];
-                if (latest && latest.length >= 3) {
-                    const sim = calculatePhoneticSimilarity(normalizeArabic(latest), normalizeArabic(currentWords[cIndex]?.text || ""));
-                    if (sim < 0.30) {
-                        setMajorMistakes(m => m + 1);
-                        lastMistakeTimeRef.current = now;
-                        setMistakeFlash(true);
-                        setTimeout(() => setMistakeFlash(false), 400);
+            if (!matchFoundInThisCall) {
+                // If the user has spoken several words and none of them matched, reset momentum
+                if (wordsToProcess.length >= 2) {
+                    consecutiveMatchCountRef.current = 0; 
+                }
+                
+                if (now - lastMistakeTimeRef.current > 4000) {
+                    const latest = wordsToProcess[wordsToProcess.length - 1];
+                    if (latest && latest.length >= 3) {
+                        const sim = calculatePhoneticSimilarity(normalizeArabic(latest), normalizeArabic(currentWords[cIndex]?.text || ""));
+                        if (sim < 0.40) {
+                            setMajorMistakes(m => m + 1);
+                            lastMistakeTimeRef.current = now;
+                            setMistakeFlash(true);
+                            setTimeout(() => setMistakeFlash(false), 400);
+                        }
                     }
                 }
             }
@@ -1403,6 +1413,9 @@ const HifzTestMode = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
+                        <button onClick={() => setShowSettings(true)} className="p-3 glass-card hover:bg-white/10 active:scale-90 transition-all text-slate-400">
+                            <Settings className="w-5 h-5" />
+                        </button>
                         <button onClick={toggleBookmark} className={`p-3 glass-card hover:bg-white/10 active:scale-90 transition-all ${isBookmarked ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'text-slate-400'}`}>
                             <Bookmark className={`w-5 h-5 ${isBookmarked ? 'fill-current' : ''}`} />
                         </button>
@@ -1658,6 +1671,13 @@ const HifzTestMode = () => {
 
     return (
         <div className="min-h-screen bg-[#020617] text-white flex flex-col relative overflow-x-hidden font-sans">
+            {error && (
+                <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] bg-red-500/90 backdrop-blur-md text-white px-5 py-3 rounded-2xl shadow-2xl text-sm font-medium flex items-center gap-3 border border-red-500/50">
+                    <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                    <span>{error}</span>
+                    <button onClick={() => setError(null)} className="p-1 hover:bg-white/20 rounded-lg transition-colors ml-2"><X className="w-4 h-4" /></button>
+                </div>
+            )}
             {view === 'menu' && renderMenu()}
             {view === 'surah' && renderSurahSelection()}
             {view === 'juz' && renderJuzSelection()}
