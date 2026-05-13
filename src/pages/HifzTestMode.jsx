@@ -302,12 +302,11 @@ const HifzTestMode = () => {
     }, [selectedSurah, bookmarks]);
 
     // --- Helpers ---
-
     const normalizeArabic = (text) => {
         if (!text) return "";
         return text
             .toLowerCase()
-            .replace(/[ًٌٍَُِّْـ]/g, "") // Remove Harakat
+            .replace(/[ًٌٍَُِّْـ]/g, "") // Remove Harakat
             .replace(/[أإآٱ]/g, "ا") // Normalize Alifs
             .replace(/[ىيئ]/g, "ي") // Normalize Yaa
             .replace(/ة/g, "ه") // Normalize Taa Marbuta
@@ -323,6 +322,26 @@ const HifzTestMode = () => {
             .replace(/\s+/g, " ") 
             .trim();
     };
+
+    // STRICT normalization — preserves all Makhraj-distinct letters (no phonetic collapse).
+    // Used when tajweedMode === 'STRICT' so the engine can detect exact letter errors.
+    const normalizeArabicStrict = (text) => {
+        if (!text) return "";
+        return text
+            .toLowerCase()
+            .replace(/[ًٌٍَُِّْـ]/g, "")         // Remove Harakat
+            .replace(/[أإآٱ]/g, "ا")             // Normalize Alif forms only
+            .replace(/[\u064B-\u065F]/g, "")     // Remove all tashkeel
+            .replace(/[^\u0621-\u064A\s]/g, "")  // Keep only Arabic + spaces
+            .replace(/\s+/g, " ")
+            .trim();
+        // NOTE: Intentionally NO phonetic collapse here.
+        // ق ≠ ك, ث ≠ س ≠ ص, ط ≠ ت, ظ ≠ ذ ≠ ز — all must be recited correctly.
+    };
+
+    // Helper: choose normalizer based on current tajweed mode
+    const getNormalizer = () =>
+        tajweedModeRef.current === 'STRICT' ? normalizeArabicStrict : normalizeArabic;
 
     // --- Tajweed & Pronunciation Helpers ---
 
@@ -383,8 +402,125 @@ const HifzTestMode = () => {
         if (target.includes('ق') && !spoken.includes('ق')) {
             return { type: 'makhraj', letter: 'ق', message: "Focus on 'ق' sound" };
         }
-        if (target.includes('ط') && !spoken.includes('طق')) { // ط can sometimes sound like ق or ت
+        if (target.includes('ط') && !spoken.includes('ط')) {
             return { type: 'makhraj', letter: 'ط', message: "Focus on 'ط' sound" };
+        }
+
+        return null;
+    };
+
+    // ─── STRICT TAJWEED RULE CHECKER ────────────────────────────────────────────
+    // Fires ONLY when tajweedMode === 'STRICT'. Checks all 7 rules from the
+    // Colour-Coded Tajweed chart: Qalqala, Ghunna, Ikhfa, Idghaam, Qalb,
+    // Ikhfa Meem Saakin, and Idghaam Meem Saakin.
+    //
+    // Returns an object { rule, message, color } or null.
+    const detectStrictTajweedViolation = (spokenWord, targetWord) => {
+        // Qalqala letters: ق ط ب ج د
+        // These must produce a slight echo/bounce when they carry a sukoon.
+        const qalqalaLetters = ['ق', 'ط', 'ب', 'ج', 'د'];
+        for (const letter of qalqalaLetters) {
+            if (targetWord.includes(letter) && !spokenWord.includes(letter)) {
+                return {
+                    rule: 'QALQALA',
+                    message: `Qalqala: '${letter}' must echo — don't swallow it`,
+                    color: 'text-red-400'
+                };
+            }
+        }
+
+        // Ghunna (nasal sound): applies to ن & م with Shaddah
+        // We detect if target has ن or م and spoken is missing it entirely.
+        if ((targetWord.includes('ن') || targetWord.includes('م')) &&
+            !spokenWord.includes('ن') && !spokenWord.includes('م')) {
+            return {
+                rule: 'GHUNNA',
+                message: 'Ghunna: hold the nasal sound on ن or م',
+                color: 'text-orange-400'
+            };
+        }
+
+        // Ikhfa: ن saakin/tanween before Ikhfa letters (15 letters)
+        // ت ث ج د ذ ز س ش ص ض ط ظ ف ق ك
+        // Simplified: if target has ن and spoken collapses it to silence
+        const ikhfaLetters = 'تثجدذزسشصضطظفقك';
+        if (targetWord.includes('ن')) {
+            const nextLetter = targetWord[targetWord.indexOf('ن') + 1];
+            if (nextLetter && ikhfaLetters.includes(nextLetter) && !spokenWord.includes('ن')) {
+                return {
+                    rule: 'IKHFA',
+                    message: `Ikhfa: light nasal before '${nextLetter}' — don't drop ن`,
+                    color: 'text-yellow-400'
+                };
+            }
+        }
+
+        // Idghaam: ن saakin/tanween merging into ي م و ن — but spoken drops it
+        const idghaamLetters = 'يمون';
+        if (targetWord.includes('ن')) {
+            const nextLetter = targetWord[targetWord.indexOf('ن') + 1];
+            if (nextLetter && idghaamLetters.includes(nextLetter) && !spokenWord.includes('ن')) {
+                return {
+                    rule: 'IDGHAAM',
+                    message: `Idghaam: merge ن into '${nextLetter}' with Ghunna`,
+                    color: 'text-green-400'
+                };
+            }
+        }
+
+        // Qalb: ن saakin/tanween before ب → becomes م sound
+        if (targetWord.includes('ن') && targetWord.includes('ب')) {
+            const nIndex = targetWord.indexOf('ن');
+            const bIndex = targetWord.indexOf('ب');
+            if (bIndex === nIndex + 1 && !spokenWord.includes('م')) {
+                return {
+                    rule: 'QALB',
+                    message: 'Qalb: ن before ب must sound like م with Ghunna',
+                    color: 'text-indigo-400'
+                };
+            }
+        }
+
+        // Ikhfa Meem Saakin: م saakin before ب → light م with nasal
+        if (targetWord.includes('م') && targetWord.includes('ب')) {
+            const mIndex = targetWord.indexOf('م');
+            const bIndex = targetWord.indexOf('ب');
+            if (bIndex === mIndex + 1 && !spokenWord.includes('م')) {
+                return {
+                    rule: 'IKHFA_MEEM',
+                    message: 'Ikhfa Meem Saakin: light م nasal before ب',
+                    color: 'text-pink-400'
+                };
+            }
+        }
+
+        // Idghaam Meem Saakin: م saakin before another م → merge with Ghunna
+        if ((targetWord.match(/م/g) || []).length >= 2 &&
+            !spokenWord.includes('م')) {
+            return {
+                rule: 'IDGHAAM_MEEM',
+                message: 'Idghaam Meem Saakin: merge the two م sounds with Ghunna',
+                color: 'text-lime-400'
+            };
+        }
+
+        // Makhraj checks — distinct letters that must be pronounced precisely
+        const makhrajPairs = [
+            { letter: 'ق', message: "Makhraj: 'ق' from deep throat — don't replace with 'ك'" },
+            { letter: 'ط', message: "Makhraj: 'ط' emphatic — don't replace with 'ت'" },
+            { letter: 'ض', message: "Makhraj: 'ض' unique — don't replace with 'ظ' or 'د'" },
+            { letter: 'ص', message: "Makhraj: 'ص' emphatic — don't replace with 'س'" },
+            { letter: 'ث', message: "Makhraj: 'ث' inter-dental — don't replace with 'س'" },
+            { letter: 'ذ', message: "Makhraj: 'ذ' inter-dental — don't replace with 'ز'" },
+            { letter: 'ظ', message: "Makhraj: 'ظ' emphatic — don't replace with 'ز' or 'ذ'" },
+            { letter: 'ح', message: "Makhraj: 'ح' from mid-throat — don't replace with 'ه'" },
+            { letter: 'ع', message: "Makhraj: 'ع' from throat — don't drop it" },
+            { letter: 'غ', message: "Makhraj: 'غ' from upper throat — don't replace with 'ك'" },
+        ];
+        for (const { letter, message } of makhrajPairs) {
+            if (targetWord.includes(letter) && !spokenWord.includes(letter)) {
+                return { rule: 'MAKHRAJ', message, color: 'text-amber-400' };
+            }
         }
 
         return null;
@@ -728,22 +864,31 @@ const HifzTestMode = () => {
                 let bestMatchScore = -100;
                 let bestMatchSimilarity = 0;
 
+                // Pick normalizer and thresholds based on Tajweed mode.
+                // STRICT mode: preserve Makhraj letters, require higher precision.
+                const isStrictMode = tajweedModeRef.current === 'STRICT';
+                const normalize = isStrictMode ? normalizeArabicStrict : normalizeArabic;
+                // STRICT thresholds: next-word=0.65, skip=0.90, jump=0.95
+                // NORMAL thresholds: next-word=0.50, skip=0.85, jump=0.90
+                const thresholds = isStrictMode
+                    ? [0.65, 0.90, 0.95]
+                    : [0.50, 0.85, 0.90];
+
                 // Priority loop: Check immediate word first with high sensitivity
                 for (let qOffset = 0; qOffset < syncWindow; qOffset++) {
                     const targetIdx = cIndex + qOffset;
                     if (targetIdx >= currentWords.length) break;
 
                     const targetWord = currentWords[targetIdx];
-                    // CACHE CHECK: Use pre-normalized text if available (pseudo-optimization)
-                    const normalizedTarget = normalizeArabic(targetWord.text);
-                    const similarity = calculatePhoneticSimilarity(normalizedSpoken, normalizedTarget);
+                    const normalizedTarget = normalize(targetWord.text);
+                    const normalizedSpokenForMatch = normalize(spoken);
+                    const similarity = calculatePhoneticSimilarity(normalizedSpokenForMatch, normalizedTarget);
 
                     // Dynamic Penalty: Heavier as we move further away to prevent "jumps"
                     const distancePenalty = qOffset * 0.35; 
                     const currentScore = similarity - distancePenalty;
                     
-                    // THRESHOLD: Lenient for the VERY NEXT word (0.50), Strict for skips (0.85), Very strict for jumps (0.90)
-                    const minThreshold = qOffset === 0 ? 0.50 : (qOffset === 1 ? 0.85 : 0.90);
+                    const minThreshold = thresholds[Math.min(qOffset, 2)];
 
                     if (currentScore > bestMatchScore && similarity >= minThreshold) {
                         // --- ELITE JUMP PROTECTION: Momentum Anchor ---
@@ -757,8 +902,8 @@ const HifzTestMode = () => {
                                 const nextSpoken = wordsToProcess[i + 1];
                                 const nextTarget = currentWords[targetIdx + 1];
                                 if (nextSpoken && nextTarget) {
-                                    const nextSim = calculatePhoneticSimilarity(normalizeArabic(nextSpoken), normalizeArabic(nextTarget.text));
-                                    if (nextSim < 0.85) continue; 
+                                    const nextSim = calculatePhoneticSimilarity(normalize(nextSpoken), normalize(nextTarget.text));
+                                    if (nextSim < thresholds[1]) continue; 
                                 } else {
                                     continue; 
                                 }
@@ -767,6 +912,24 @@ const HifzTestMode = () => {
                         bestMatchScore = currentScore;
                         bestMatchSimilarity = similarity;
                         bestMatchIdx = targetIdx;
+
+                        // STRICT MODE: check Tajweed rule violations even on a match
+                        if (isStrictMode && qOffset === 0 && similarity < 0.90) {
+                            const strictNormSpoken = normalizeArabicStrict(spoken);
+                            const strictNormTarget = normalizeArabicStrict(targetWord.text);
+                            const violation = detectStrictTajweedViolation(strictNormSpoken, strictNormTarget);
+                            if (violation) {
+                                setFeedback(violation.message);
+                                setMinorMistakes(m => m + 1);
+                                setPronunciationIssues(prev => [
+                                    ...prev,
+                                    { word: targetWord.text, ...violation }
+                                ]);
+                                // Flash feedback briefly
+                                clearTimeout(correctionTimerRef.current);
+                                correctionTimerRef.current = setTimeout(() => setFeedback(""), 3000);
+                            }
+                        }
                     }
                     // If we find a perfect match at current position, stop looking
                     if (similarity >= 0.95 && qOffset === 0) break;
@@ -808,12 +971,37 @@ const HifzTestMode = () => {
                     consecutiveMatchCountRef.current = 0; 
                 }
                 
-                if (now - lastMistakeTimeRef.current > 4000) {
+                const isStrictMistake = tajweedModeRef.current === 'STRICT';
+                const mistakeThreshold = isStrictMistake ? 0.50 : 0.40; // Stricter: more sensitivity
+                const mistakeDelay = isStrictMistake ? 2500 : 4000;     // Stricter: faster feedback
+
+                if (now - lastMistakeTimeRef.current > mistakeDelay) {
                     const latest = wordsToProcess[wordsToProcess.length - 1];
                     if (latest && latest.length >= 3) {
-                        const sim = calculatePhoneticSimilarity(normalizeArabic(latest), normalizeArabic(currentWords[cIndex]?.text || ""));
-                        if (sim < 0.40) {
-                            setMajorMistakes(m => m + 1);
+                        const normalize = isStrictMistake ? normalizeArabicStrict : normalizeArabic;
+                        const sim = calculatePhoneticSimilarity(normalize(latest), normalize(currentWords[cIndex]?.text || ""));
+                        if (sim < mistakeThreshold) {
+                            // In STRICT mode, check for a specific Tajweed rule violation
+                            if (isStrictMistake) {
+                                const violation = detectStrictTajweedViolation(
+                                    normalizeArabicStrict(latest),
+                                    normalizeArabicStrict(currentWords[cIndex]?.text || "")
+                                );
+                                if (violation) {
+                                    setFeedback(violation.message);
+                                    setPronunciationIssues(prev => [
+                                        ...prev,
+                                        { word: currentWords[cIndex]?.text, ...violation }
+                                    ]);
+                                    clearTimeout(correctionTimerRef.current);
+                                    correctionTimerRef.current = setTimeout(() => setFeedback(""), 3000);
+                                    setMinorMistakes(m => m + 1); // Tajweed errors = minor mistake
+                                } else {
+                                    setMajorMistakes(m => m + 1); // Wrong word entirely = major
+                                }
+                            } else {
+                                setMajorMistakes(m => m + 1);
+                            }
                             lastMistakeTimeRef.current = now;
                             setMistakeFlash(true);
                             setTimeout(() => setMistakeFlash(false), 400);
@@ -1441,6 +1629,22 @@ const HifzTestMode = () => {
                     </div>
                 </main>
 
+                {/* STRICT TAJWEED FEEDBACK BANNER */}
+                <AnimatePresence>
+                    {tajweedMode === 'STRICT' && feedback && (
+                        <motion.div
+                            key={feedback}
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="fixed top-20 left-1/2 -translate-x-1/2 z-[80] bg-amber-500/10 border border-amber-500/30 backdrop-blur-md text-amber-300 text-xs font-bold px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-2 max-w-[90vw] text-center"
+                        >
+                            <span className="text-base">📖</span>
+                            <span>{feedback}</span>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
                 <div className="fixed bottom-0 inset-x-0 h-28 bg-gradient-to-t from-black via-black/90 to-transparent flex items-center justify-center z-[60] px-4 pointer-events-none pb-4">
                     <div className="w-full max-w-[460px] flex items-center justify-between pointer-events-auto bg-slate-900/90 backdrop-blur-3xl rounded-3xl border border-white/10 p-3 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
                         <div className="flex items-center gap-1 bg-white/5 p-1 rounded-2xl border border-white/5">
@@ -1626,7 +1830,7 @@ const HifzTestMode = () => {
                                     <p className="text-[10px] text-slate-500 leading-relaxed">
                                         {tajweedMode === 'OFF' && "No pronunciation checks. Focus only on memorization."}
                                         {tajweedMode === 'NORMAL' && "Detects major mistakes. Ignores minor phonetic differences."}
-                                        {tajweedMode === 'STRICT' && "Strict letter-level matching. High accuracy required."}
+                                        {tajweedMode === 'STRICT' && "Full Makhraj & Tajweed enforcement: Qalqala, Ghunna, Ikhfa, Idghaam, Qalb — each letter must be recited precisely."}
                                     </p>
                                 </div>
 
