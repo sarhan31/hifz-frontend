@@ -1,4 +1,6 @@
 import React from 'react';
+import { motion } from 'framer-motion';
+
 
 const VocalTract = ({ activeLetter, articulationPoint }) => {
   // Medical Illustration Style SVG
