@@ -84,6 +84,8 @@ const AudioPlayerPage = () => {
   const [playbackRate, setPlaybackRate] = useState(1);
   const [repeatMode, setRepeatMode] = useState('none'); 
   const [activeAyahIndex, setActiveAyahIndex] = useState(-1);
+  const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
+
   
   // Refs
   const audioRef = useRef(null);
@@ -124,12 +126,13 @@ const AudioPlayerPage = () => {
       try {
         const [ayahResponse, timingResponse] = await Promise.all([
           axios.get(`${API_URL}/api/quran/surah/${selectedSurah.id}`),
-          axios.get(`https://api.quran.com/api/v4/recitations/7/by_chapter/${selectedSurah.id}?per_page=300`)
+          axios.get(`https://api.quran.com/api/v4/chapter_recitations/7/${selectedSurah.id}?segments=true`)
         ]);
 
         const allAyahs = ayahResponse.data?.ayahs || [];
         setFullAyahs(allAyahs);
-        setTimings(timingResponse.data?.audio_segments || []);
+        setTimings(timingResponse.data?.audio_file?.timestamps || []);
+
         
         // Progressive Loading: Start with first 20 ayahs
         setRenderedAyahs(allAyahs.slice(0, 20));
@@ -179,22 +182,25 @@ const AudioPlayerPage = () => {
       if (index !== -1 && index !== activeAyahIndex) {
         setActiveAyahIndex(index);
         
-        // Auto-Scroll Logic
-        const element = ayahRefs.current[index];
-        if (element && !isAutoScrolling.current) {
-          isAutoScrolling.current = true;
-          element.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center'
-          });
-          // Release lock after scroll animation
-          setTimeout(() => { isAutoScrolling.current = false; }, 1000);
+        // Auto-Scroll Logic (only if enabled)
+        if (isAutoScrollEnabled) {
+          const element = ayahRefs.current[index];
+          if (element && !isAutoScrolling.current) {
+            isAutoScrolling.current = true;
+            element.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center'
+            });
+            // Release lock after scroll animation
+            setTimeout(() => { isAutoScrolling.current = false; }, 1000);
+          }
         }
       }
     }, 100); // Check every 100ms for high precision
 
     return () => clearInterval(syncInterval);
-  }, [timings, activeAyahIndex, isPlaying, currentTime]);
+  }, [timings, activeAyahIndex, isPlaying, currentTime, isAutoScrollEnabled]);
+
 
   // Audio Handlers
   const togglePlay = useCallback(() => {
@@ -388,6 +394,18 @@ const AudioPlayerPage = () => {
             </button>
 
             <div className="flex items-center gap-4 md:gap-6">
+              {/* Auto Scroll Toggle */}
+              <button 
+                onClick={() => setIsAutoScrollEnabled(!isAutoScrollEnabled)}
+                className={`w-10 h-10 md:w-12 md:h-12 flex flex-col items-center justify-center rounded-xl transition-all active:scale-90 ${
+                  isAutoScrollEnabled ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/5 text-slate-500'
+                }`}
+                title="Auto Scroll"
+              >
+                <Maximize2 className="w-4 h-4 md:w-5 h-5 mb-0.5" />
+                <span className="text-[7px] font-black uppercase">Auto</span>
+              </button>
+
               <button onClick={skipBackward} className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center text-slate-400 hover:text-white transition-all active:scale-90">
                 <SkipBack className="w-5 h-5 md:w-6 md:h-6 fill-current" />
               </button>
@@ -398,6 +416,7 @@ const AudioPlayerPage = () => {
                 <SkipForward className="w-5 h-5 md:w-6 md:h-6 fill-current" />
               </button>
             </div>
+
 
             <button onClick={() => setRepeatMode(r => r === 'none' ? 'one' : r === 'one' ? 'all' : 'none')} className={`w-10 h-10 md:w-12 md:h-12 flex items-center justify-center rounded-xl transition-all active:scale-90 ${repeatMode !== 'none' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/5 text-slate-400'}`}>
               <Repeat className="w-4 h-4 md:w-5 md:h-5" />
