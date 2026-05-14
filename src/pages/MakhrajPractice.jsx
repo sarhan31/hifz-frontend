@@ -11,6 +11,8 @@ const MakhrajPractice = () => {
   const { language } = useLanguage();
   const navigate = useNavigate();
   const [selectedLetter, setSelectedLetter] = useState(null);
+  const SKIP_LOCAL_AUDIO = true; // Set to false once files are uploaded to public/makhraj/
+
 
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef(null);
@@ -33,9 +35,16 @@ const MakhrajPractice = () => {
 
     setIsPlaying(true);
 
+    // Skip local audio and go straight to TTS if files are missing
+    if (SKIP_LOCAL_AUDIO) {
+        handleTTS();
+        return;
+    }
+
     // Primary: Try local audio file
     const audio = new Audio(audioPath);
     audioRef.current = audio;
+
 
     const handleTTS = () => {
         // High Quality Arabic TTS Fallback
