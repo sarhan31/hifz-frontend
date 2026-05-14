@@ -126,21 +126,23 @@ const AudioPlayerPage = () => {
       setLoading(true);
       setRenderedAyahs([]);
       try {
-        const [ayahResponse, timingResponse] = await Promise.all([
-          axios.get(`${API_URL}/api/quran/surah/${selectedSurah.id}`),
-          axios.get(`https://api.quran.com/api/v4/chapter_recitations/7/${selectedSurah.id}?segments=true`)
-        ]);
-
+        // 1. Fetch Ayahs first (Fast)
+        const ayahResponse = await axios.get(`${API_URL}/api/quran/surah/${selectedSurah.id}`);
         const allAyahs = ayahResponse.data?.ayahs || [];
         setFullAyahs(allAyahs);
-        setTimings(timingResponse.data?.audio_file?.timestamps || []);
-
-        
-        // Progressive Loading: Start with first 20 ayahs
         setRenderedAyahs(allAyahs.slice(0, 20));
+        setLoading(false); // Stop loading spinner once we have text
+
+        // 2. Fetch Timings in background (Heavier)
+        axios.get(`https://api.quran.com/api/v4/chapter_recitations/7/${selectedSurah.id}?segments=true`)
+          .then(timingResponse => {
+            setTimings(timingResponse.data?.audio_file?.timestamps || []);
+          })
+          .catch(err => console.error("Timings fetch failed:", err));
         
         // Render remaining ayahs in batches
         let currentBatch = 20;
+
         const interval = setInterval(() => {
           if (currentBatch >= allAyahs.length) {
             clearInterval(interval);
@@ -428,15 +430,21 @@ const AudioPlayerPage = () => {
         </div>
       </footer>
 
-      {/* Audio Element */}
+      {/* Audio Element - Optimized for fast start */}
       <audio 
         ref={audioRef}
         src={audioUrl}
-        preload="auto"
+        preload="metadata"
+        crossOrigin="anonymous"
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}
+        onCanPlay={() => {
+          // Attempt auto-play if it was triggered
+          if (isPlaying) audioRef.current?.play().catch(() => {});
+        }}
       />
+
 
       <SurahBottomSheet 
         isOpen={isSelectorOpen}
