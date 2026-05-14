@@ -78,6 +78,9 @@ const AudioPlayerPage = () => {
   const [timings, setTimings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
+  const [fallbackAudioUrl, setFallbackAudioUrl] = useState('');
+  const [audioError, setAudioError] = useState(false);
+
   
   // Audio Player State
   const [isPlaying, setIsPlaying] = useState(false);
@@ -136,9 +139,12 @@ const AudioPlayerPage = () => {
         // 2. Fetch Timings in background (Heavier)
         axios.get(`https://api.quran.com/api/v4/chapter_recitations/7/${selectedSurah.id}?segments=true`)
           .then(timingResponse => {
-            setTimings(timingResponse.data?.audio_file?.timestamps || []);
+            const data = timingResponse.data?.audio_file;
+            setTimings(data?.timestamps || []);
+            if (data?.audio_url) setFallbackAudioUrl(data.audio_url);
           })
           .catch(err => console.error("Timings fetch failed:", err));
+
         
         // Render remaining ayahs in batches
         let currentBatch = 20;
@@ -262,7 +268,10 @@ const AudioPlayerPage = () => {
     setIsSelectorOpen(false);
     setCurrentTime(0);
     currentTimeRef.current = 0;
+    setAudioError(false);
+    
     setTimeout(() => {
+
       if (audioRef.current) {
         audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
       }
@@ -430,20 +439,24 @@ const AudioPlayerPage = () => {
         </div>
       </footer>
 
-      {/* Audio Element - Optimized for fast start */}
+      {/* Audio Element */}
       <audio 
         ref={audioRef}
-        src={audioUrl}
-        preload="metadata"
-        crossOrigin="anonymous"
+        src={audioError && fallbackAudioUrl ? fallbackAudioUrl : audioUrl}
+        preload="auto"
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}
+        onError={() => {
+          console.warn("Primary audio failed, attempting fallback...");
+          setAudioError(true);
+        }}
         onCanPlay={() => {
-          // Attempt auto-play if it was triggered
           if (isPlaying) audioRef.current?.play().catch(() => {});
         }}
       />
+
+
 
 
       <SurahBottomSheet 
