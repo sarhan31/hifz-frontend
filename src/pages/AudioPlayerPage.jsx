@@ -112,6 +112,7 @@ const AudioPlayerPage = () => {
     fetchData();
   }, [selectedSurah]);
 
+
   // Sync Active Ayah with Current Time
   useEffect(() => {
     if (!timings.length || !isPlaying) return;
@@ -215,9 +216,22 @@ const AudioPlayerPage = () => {
   const handleSurahSelect = (surah) => {
     setSelectedSurah(surah);
     setIsSelectorOpen(false);
-    setIsPlaying(false);
     setCurrentTime(0);
+    
+    // Auto-play when a surah is selected
+    setTimeout(() => {
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        audioRef.current.play().then(() => {
+          setIsPlaying(true);
+        }).catch(err => {
+          console.error("Auto-play failed:", err);
+          setIsPlaying(false);
+        });
+      }
+    }, 500); // Small delay to allow audio source to update
   };
+
 
   const formatTime = (time) => {
     const mins = Math.floor(time / 60);
@@ -232,41 +246,50 @@ const AudioPlayerPage = () => {
   }, [selectedSurah]);
 
   return (
-    <div className="min-h-screen bg-[#020617] text-white flex flex-col font-sans overflow-hidden">
+    <div className="h-screen bg-[#020617] text-white flex flex-col font-sans overflow-hidden">
       {/* Background Aesthetic */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-emerald-500/5 blur-[120px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/5 blur-[120px] rounded-full" />
+        <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-emerald-500/10 blur-[150px] rounded-full" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-blue-600/10 blur-[150px] rounded-full" />
       </div>
 
       {/* Header */}
-      <header className="relative z-10 px-6 py-4 flex items-center justify-between backdrop-blur-md bg-slate-950/50 border-b border-white/5">
+      <header className="relative z-[110] px-6 py-5 flex items-center justify-between backdrop-blur-xl bg-slate-950/40 border-b border-white/5 shadow-lg">
         <button 
           onClick={() => navigate('/')}
-          className="w-10 h-10 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 transition-colors"
+          className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 active:scale-90 transition-all"
         >
-          <ArrowLeft className="w-5 h-5 text-slate-300" />
+          <ArrowLeft className="w-6 h-6 text-slate-300" />
         </button>
+
+        <div className="flex flex-col items-center">
+          <button 
+            onClick={() => setIsSelectorOpen(true)}
+            className="flex flex-col items-center group active:scale-95 transition-transform"
+          >
+            <div className="flex items-center gap-2">
+              <span className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-[10px] font-black text-emerald-400 border border-emerald-500/20">
+                {selectedSurah?.id}
+              </span>
+              <h1 className="text-xl font-black tracking-tight text-white group-hover:text-emerald-400 transition-colors">
+                {selectedSurah ? selectedSurah.transliteration : 'Select Surah'}
+              </h1>
+              <ChevronDown className="w-5 h-5 text-emerald-400" />
+            </div>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em] mt-1">
+              {ayahs.length} Ayahs • {selectedSurah?.name_arabic}
+            </p>
+          </button>
+        </div>
 
         <button 
           onClick={() => setIsSelectorOpen(true)}
-          className="flex flex-col items-center group"
+          className="w-12 h-12 flex items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 active:scale-90 transition-all border border-emerald-500/20"
         >
-          <div className="flex items-center gap-1.5">
-            <h1 className="text-lg font-bold tracking-tight">
-              {selectedSurah ? selectedSurah.transliteration : 'Select Surah'}
-            </h1>
-            <ChevronDown className="w-4 h-4 text-emerald-400 group-hover:translate-y-0.5 transition-transform" />
-          </div>
-          <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">
-            {selectedSurah?.name_arabic}
-          </span>
-        </button>
-
-        <button className="w-10 h-10 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 transition-colors">
-          <Settings2 className="w-5 h-5 text-slate-300" />
+          <List className="w-6 h-6" />
         </button>
       </header>
+
 
       {/* Content Area - Quran Reading Interface */}
       <main className="flex-1 overflow-y-auto no-scrollbar relative z-10 px-6 py-8" ref={scrollContainerRef}>
@@ -344,8 +367,9 @@ const AudioPlayerPage = () => {
       </main>
 
       {/* Fixed Bottom Audio Controls */}
-      <footer className="relative z-20 backdrop-blur-2xl bg-slate-950/80 border-t border-white/10 px-6 pt-4 pb-8 shadow-[0_-20px_50px_rgba(0,0,0,0.5)]">
-        <div className="max-w-md mx-auto flex flex-col gap-4">
+      <footer className="fixed bottom-0 left-0 right-0 z-[100] backdrop-blur-3xl bg-slate-950/90 border-t border-white/10 px-6 pt-4 pb-10 shadow-[0_-20px_60px_rgba(0,0,0,0.8)]">
+        <div className="max-w-md mx-auto flex flex-col gap-5">
+
           
           {/* Progress Bar */}
           <div className="flex flex-col gap-1">
