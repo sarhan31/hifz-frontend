@@ -12,8 +12,10 @@ import {
   List as ListIcon,
   Search,
   Volume2,
-  Loader2
+  Loader2,
+  Maximize2
 } from 'lucide-react';
+
 
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
