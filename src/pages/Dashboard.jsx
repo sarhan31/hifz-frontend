@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { AnimatePresence, motion } from 'framer-motion';
-import { BookOpen, Play, CheckCircle, AlertTriangle, Pause, Mic, Brain, Settings, Activity, Calendar, Flame, ChevronDown, ChevronUp, BarChart2 } from 'lucide-react';
+import { BookOpen, Play, CheckCircle, AlertTriangle, Pause, Mic, Brain, Settings, Activity, Calendar, Flame, ChevronDown, ChevronUp, BarChart2, Volume2 } from 'lucide-react';
+
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
@@ -358,7 +359,43 @@ const Dashboard = () => {
             </motion.div>
           </div>
 
+          {/* Quick Tools */}
+          <div className="grid grid-cols-2 gap-4">
+            <motion.div 
+              whileTap={{ scale: 0.98 }}
+              onClick={() => navigate('/audio-player')}
+              className="glass-card p-5 relative overflow-hidden group cursor-pointer border-l-4 border-l-blue-500"
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="flex items-center gap-3 mb-3 relative z-10">
+                <div className="p-2 bg-blue-500/20 rounded-xl border border-blue-500/30">
+                  <Volume2 className="w-4 h-4 text-blue-400" />
+                </div>
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Immersive</span>
+              </div>
+              <h3 className="text-sm font-bold text-white relative z-10">Audio Player</h3>
+              <p className="text-[10px] text-slate-500 mt-1 relative z-10 font-medium">Listening & Focus</p>
+            </motion.div>
+
+            <motion.div 
+              whileTap={{ scale: 0.98 }}
+              onClick={() => navigate('/makhraj')}
+              className="glass-card p-5 relative overflow-hidden group cursor-pointer border-l-4 border-l-emerald-500"
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="flex items-center gap-3 mb-3 relative z-10">
+                <div className="p-2 bg-emerald-500/20 rounded-xl border border-emerald-500/30">
+                  <Mic className="w-4 h-4 text-emerald-400" />
+                </div>
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Practice</span>
+              </div>
+              <h3 className="text-sm font-bold text-white relative z-10">Makhraj</h3>
+              <p className="text-[10px] text-slate-500 mt-1 relative z-10 font-medium">Tajweed Master</p>
+            </motion.div>
+          </div>
+
           {/* Revision Plan */}
+
           <motion.div className="glass-card p-6 border border-white/10 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -mr-10 -mt-10" />
             

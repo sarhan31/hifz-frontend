@@ -23,6 +23,8 @@ import SplashScreen from './pages/SplashScreen';
 import Intro from './pages/Intro';
 import BootGate from './components/BootGate';
 import ScrollToTop from './components/ScrollToTop';
+import AudioPlayerPage from './pages/AudioPlayerPage';
+
 
 const API_URL = import.meta.env.VITE_API_URL;
 const BOOT_HEALTH_TIMEOUT_MS = Number(import.meta.env.VITE_BOOT_HEALTH_TIMEOUT_MS) || 10000;
@@ -103,6 +105,14 @@ const AnimatedRoutes = () => {
             </BootGate>
           </ProtectedRoute>
         } />
+        <Route path="/audio-player" element={
+          <ProtectedRoute>
+            <BootGate>
+              <PageTransition><AudioPlayerPage /></PageTransition>
+            </BootGate>
+          </ProtectedRoute>
+        } />
+
         <Route path="/dashboard" element={<Navigate to="/" replace />} />
       </Routes>
     </AnimatePresence>
@@ -114,7 +124,8 @@ import { useUI } from './context/UIContext';
 const MainLayout = () => {
   const location = useLocation();
   const { isBottomNavVisible } = useUI();
-  const hideNav = ['/login', '/signup', '/splash', '/intro', '/mushaf'].includes(location.pathname);
+  const hideNav = ['/login', '/signup', '/splash', '/intro', '/mushaf', '/audio-player'].includes(location.pathname);
+
 
   return (
     <>
