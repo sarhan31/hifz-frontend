@@ -9,12 +9,12 @@ import {
   SkipForward, 
   Repeat, 
   ChevronDown, 
-  List,
+  List as ListIcon,
   Search,
   Volume2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { VariableSizeList as ListComponent } from 'react-window';
+import { List as VirtualList, useDynamicRowHeight } from 'react-window';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -26,8 +26,7 @@ const SUPABASE_PROJECT_ID = 'ckawytdgyoazhxhnvjzm';
 const AUDIO_BASE_URL = `https://${SUPABASE_PROJECT_ID}.supabase.co/storage/v1/object/public/quran-audio`;
 
 // --- Memoized Ayah Item Component ---
-const AyahItem = React.memo(({ index, style, data }) => {
-  const { ayahs, activeAyahIndex } = data;
+const AyahRow = React.memo(({ index, style, ayahs, activeAyahIndex }) => {
   const ayah = ayahs[index];
   const isActive = activeAyahIndex === index;
   const isPrevious = activeAyahIndex > index;
@@ -35,7 +34,7 @@ const AyahItem = React.memo(({ index, style, data }) => {
   if (!ayah) return null;
 
   return (
-    <div style={style} className="px-6">
+    <div style={style} className="px-6 py-2">
       <motion.div
         initial={false}
         animate={{
@@ -173,11 +172,10 @@ const AudioPlayerPage = () => {
 
       if (index !== -1 && index !== activeAyahIndex) {
         setActiveAyahIndex(index);
-        listRef.current?.scrollToItem(index, 'center');
+        listRef.current?.scrollToRow({ index, align: 'center', behavior: 'smooth' });
       }
     };
 
-    // We check sync periodically if playing, or instantly on timeupdate
     syncAyah();
   }, [currentTime, timings, activeAyahIndex]);
 
@@ -197,8 +195,6 @@ const AudioPlayerPage = () => {
     if (audioRef.current) {
       const time = audioRef.current.currentTime;
       currentTimeRef.current = time;
-      // Only update state occasionally to avoid constant re-renders
-      // but frequently enough for the progress bar
       if (Math.abs(time - currentTime) > 0.5) {
         setCurrentTime(time);
       }
@@ -268,30 +264,25 @@ const AudioPlayerPage = () => {
     }
   }, [repeatMode, autoContinue, selectedSurah, surahList, handleSurahSelect]);
 
-  // Utility for time formatting
   const formatTime = useCallback((time) => {
     const mins = Math.floor(time / 60);
     const secs = Math.floor(time % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   }, []);
 
-  // Audio URL Memo
   const audioUrl = useMemo(() => {
     if (!selectedSurah) return '';
     const paddedId = String(selectedSurah.id).padStart(3, '0');
     return `${AUDIO_BASE_URL}/${paddedId}.mp3`;
   }, [selectedSurah]);
 
-  // Virtual List Item Size Estimator
-  const getItemSize = useCallback((index) => {
-    const ayah = ayahs[index];
-    if (!ayah) return 100;
-    // Base height + estimated height based on character count
-    const chars = ayah.text_ar.length;
-    return Math.max(120, Math.ceil(chars / 2.5) + 80);
-  }, [ayahs]);
+  // Use Dynamic Row Height Hook for the new react-window API
+  const dynamicRowHeight = useDynamicRowHeight({
+    defaultRowHeight: 180,
+    key: selectedSurah?.id || 'default'
+  });
 
-  const itemData = useMemo(() => ({
+  const rowProps = useMemo(() => ({
     ayahs,
     activeAyahIndex,
   }), [ayahs, activeAyahIndex]);
@@ -328,12 +319,12 @@ const AudioPlayerPage = () => {
         </div>
 
         <button onClick={() => setIsSelectorOpen(true)} className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 active:scale-90 transition-all border border-emerald-500/20">
-          <List className="w-5 h-5 md:w-6 md:h-6" />
+          <ListIcon className="w-5 h-5 md:w-6 md:h-6" />
         </button>
       </header>
 
       {/* Main Content - Virtualized List */}
-      <main className="flex-1 relative z-10 pt-4 pb-40">
+      <main className="flex-1 relative z-10 pt-4">
         {loading ? (
           <div className="flex flex-col gap-4 max-w-2xl mx-auto mt-8">
             <AyahSkeleton />
@@ -341,17 +332,16 @@ const AudioPlayerPage = () => {
             <AyahSkeleton />
           </div>
         ) : (
-          <ListComponent
-            ref={listRef}
+          <VirtualList
+            listRef={listRef}
             height={window.innerHeight - 200}
-            itemCount={ayahs.length}
-            itemSize={getItemSize}
+            rowCount={ayahs.length}
+            rowHeight={dynamicRowHeight}
             width="100%"
-            itemData={itemData}
+            rowComponent={AyahRow}
+            rowProps={rowProps}
             className="no-scrollbar"
-          >
-            {AyahItem}
-          </ListComponent>
+          />
         )}
       </main>
 
