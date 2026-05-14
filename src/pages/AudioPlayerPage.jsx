@@ -11,10 +11,11 @@ import {
   ChevronDown, 
   List as ListIcon,
   Search,
-  Volume2
+  Volume2,
+  Loader2
 } from 'lucide-react';
+
 import { useNavigate } from 'react-router-dom';
-import { List as VirtualList, useDynamicRowHeight } from 'react-window';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -25,56 +26,41 @@ const API_URL = import.meta.env.VITE_API_URL;
 const SUPABASE_PROJECT_ID = 'ckawytdgyoazhxhnvjzm';
 const AUDIO_BASE_URL = `https://${SUPABASE_PROJECT_ID}.supabase.co/storage/v1/object/public/quran-audio`;
 
-// --- Memoized Ayah Item Component ---
-const AyahRow = React.memo(({ index, style, ayahs, activeAyahIndex }) => {
-  const ayah = ayahs[index];
-  const isActive = activeAyahIndex === index;
-  const isPrevious = activeAyahIndex > index;
-
-  if (!ayah) return null;
-
+// --- Optimized Ayah Item ---
+const AyahItem = React.memo(({ ayah, index, isActive, isPrevious }) => {
   return (
-    <div style={style} className="px-6 py-2">
-      <motion.div
-        initial={false}
-        animate={{
-          opacity: isActive ? 1 : isPrevious ? 0.4 : 0.6,
-          scale: isActive ? 1.02 : 1,
-        }}
-        className={`relative p-4 md:p-6 rounded-[32px] transition-all duration-700 ${
-          isActive ? 'bg-emerald-500/5 shadow-[0_20px_50px_rgba(16,185,129,0.05)]' : ''
-        }`}
-      >
-        {isActive && (
-          <motion.div 
-            layoutId="ayah-glow"
-            className="absolute inset-0 bg-emerald-500/5 rounded-[32px] blur-xl -z-10"
-          />
-        )}
-        
-        <div className="flex flex-col items-center text-center">
-          <p 
-            className={`font-arabic text-3xl md:text-4xl leading-[2.2] transition-colors duration-700 ${
-              isActive ? 'text-emerald-400 drop-shadow-[0_0_15px_rgba(52,211,153,0.3)]' : 'text-slate-200'
-            }`}
-          >
-            {ayah.text_ar}
-            <span className="inline-flex items-center justify-center mr-4 w-10 h-10 rounded-full border border-emerald-500/20 text-xs font-bold text-emerald-500/60 font-sans align-middle">
-              {ayah.ayah_number}
-            </span>
-          </p>
-        </div>
-      </motion.div>
-    </div>
+    <motion.div
+      initial={false}
+      animate={{
+        opacity: isActive ? 1 : isPrevious ? 0.4 : 0.6,
+        scale: isActive ? 1.02 : 1,
+      }}
+      className={`relative p-4 md:p-6 rounded-[32px] transition-all duration-700 ${
+        isActive ? 'bg-emerald-500/5 shadow-[0_20px_50px_rgba(16,185,129,0.05)]' : ''
+      }`}
+    >
+      {isActive && (
+        <motion.div 
+          layoutId="ayah-glow"
+          className="absolute inset-0 bg-emerald-500/5 rounded-[32px] blur-xl -z-10"
+        />
+      )}
+      
+      <div className="flex flex-col items-center text-center">
+        <p 
+          className={`font-arabic text-3xl md:text-4xl leading-[2.2] transition-colors duration-700 ${
+            isActive ? 'text-emerald-400 drop-shadow-[0_0_15px_rgba(52,211,153,0.3)]' : 'text-slate-200'
+          }`}
+        >
+          {ayah.text_ar}
+          <span className="inline-flex items-center justify-center mr-4 w-10 h-10 rounded-full border border-emerald-500/20 text-xs font-bold text-emerald-500/60 font-sans align-middle">
+            {ayah.ayah_number}
+          </span>
+        </p>
+      </div>
+    </motion.div>
   );
 });
-
-// --- Skeleton Loader Component ---
-const AyahSkeleton = () => (
-  <div className="px-6 py-4 animate-pulse">
-    <div className="h-32 bg-white/5 rounded-[32px] w-full" />
-  </div>
-);
 
 const AudioPlayerPage = () => {
   const navigate = useNavigate();
@@ -82,10 +68,11 @@ const AudioPlayerPage = () => {
   const { t } = useLanguage();
   const { setBottomNavVisible } = useUI();
   
-  // State
+  // Data State
   const [surahList, setSurahList] = useState([]);
   const [selectedSurah, setSelectedSurah] = useState(null);
-  const [ayahs, setAyahs] = useState([]);
+  const [fullAyahs, setFullAyahs] = useState([]);
+  const [renderedAyahs, setRenderedAyahs] = useState([]); // For progressive loading
   const [timings, setTimings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
@@ -96,13 +83,14 @@ const AudioPlayerPage = () => {
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [repeatMode, setRepeatMode] = useState('none'); 
-  const [autoContinue, setAutoContinue] = useState(true);
   const [activeAyahIndex, setActiveAyahIndex] = useState(-1);
   
   // Refs
   const audioRef = useRef(null);
-  const listRef = useRef(null);
+  const scrollContainerRef = useRef(null);
+  const ayahRefs = useRef({});
   const currentTimeRef = useRef(0);
+  const isAutoScrolling = useRef(false);
 
   // Hide bottom nav
   useEffect(() => {
@@ -126,21 +114,37 @@ const AudioPlayerPage = () => {
     fetchSurahs();
   }, []);
 
-  // Fetch Ayahs and Timings
+  // Fetch Data & Progressive Loading Logic
   useEffect(() => {
     if (!selectedSurah) return;
 
     const fetchData = async () => {
       setLoading(true);
+      setRenderedAyahs([]);
       try {
         const [ayahResponse, timingResponse] = await Promise.all([
           axios.get(`${API_URL}/api/quran/surah/${selectedSurah.id}`),
           axios.get(`https://api.quran.com/api/v4/recitations/7/by_chapter/${selectedSurah.id}?per_page=300`)
         ]);
 
-        setAyahs(ayahResponse.data?.ayahs || []);
+        const allAyahs = ayahResponse.data?.ayahs || [];
+        setFullAyahs(allAyahs);
         setTimings(timingResponse.data?.audio_segments || []);
         
+        // Progressive Loading: Start with first 20 ayahs
+        setRenderedAyahs(allAyahs.slice(0, 20));
+        
+        // Render remaining ayahs in batches
+        let currentBatch = 20;
+        const interval = setInterval(() => {
+          if (currentBatch >= allAyahs.length) {
+            clearInterval(interval);
+            return;
+          }
+          currentBatch += 30;
+          setRenderedAyahs(allAyahs.slice(0, currentBatch));
+        }, 100);
+
         // Reset player
         setCurrentTime(0);
         currentTimeRef.current = 0;
@@ -158,11 +162,13 @@ const AudioPlayerPage = () => {
     fetchData();
   }, [selectedSurah]);
 
-  // Performance-optimized Sync logic
+  // High-Precision Synchronization & Auto-Scroll
   useEffect(() => {
     if (!timings.length) return;
 
-    const syncAyah = () => {
+    const syncInterval = setInterval(() => {
+      if (!isPlaying && currentTimeRef.current === currentTime) return;
+
       const timeMs = currentTimeRef.current * 1000;
       const index = timings.findIndex(t => {
         const start = t.timestamp_from ?? t.manual_timestamp_from;
@@ -172,20 +178,31 @@ const AudioPlayerPage = () => {
 
       if (index !== -1 && index !== activeAyahIndex) {
         setActiveAyahIndex(index);
-        listRef.current?.scrollToRow({ index, align: 'center', behavior: 'smooth' });
+        
+        // Auto-Scroll Logic
+        const element = ayahRefs.current[index];
+        if (element && !isAutoScrolling.current) {
+          isAutoScrolling.current = true;
+          element.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
+          });
+          // Release lock after scroll animation
+          setTimeout(() => { isAutoScrolling.current = false; }, 1000);
+        }
       }
-    };
+    }, 100); // Check every 100ms for high precision
 
-    syncAyah();
-  }, [currentTime, timings, activeAyahIndex]);
+    return () => clearInterval(syncInterval);
+  }, [timings, activeAyahIndex, isPlaying, currentTime]);
 
-  // Handlers with useCallback
+  // Audio Handlers
   const togglePlay = useCallback(() => {
     if (audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause();
       } else {
-        audioRef.current.play();
+        audioRef.current.play().catch(console.error);
       }
       setIsPlaying(!isPlaying);
     }
@@ -195,11 +212,10 @@ const AudioPlayerPage = () => {
     if (audioRef.current) {
       const time = audioRef.current.currentTime;
       currentTimeRef.current = time;
-      if (Math.abs(time - currentTime) > 0.5) {
-        setCurrentTime(time);
-      }
+      // Update progress bar state frequently enough for smoothness
+      setCurrentTime(time);
     }
-  }, [currentTime]);
+  }, []);
 
   const handleLoadedMetadata = useCallback(() => {
     if (audioRef.current) {
@@ -217,26 +233,18 @@ const AudioPlayerPage = () => {
   }, []);
 
   const skipForward = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.currentTime += 10;
-    }
+    if (audioRef.current) audioRef.current.currentTime += 10;
   }, []);
 
   const skipBackward = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.currentTime -= 10;
-    }
+    if (audioRef.current) audioRef.current.currentTime -= 10;
   }, []);
 
   const changeSpeed = useCallback(() => {
     const rates = [1, 1.25, 1.5, 0.5];
-    const currentIndex = rates.indexOf(playbackRate);
-    const nextIndex = (currentIndex + 1) % rates.length;
-    const nextRate = rates[nextIndex];
+    const nextRate = rates[(rates.indexOf(playbackRate) + 1) % rates.length];
     setPlaybackRate(nextRate);
-    if (audioRef.current) {
-      audioRef.current.playbackRate = nextRate;
-    }
+    if (audioRef.current) audioRef.current.playbackRate = nextRate;
   }, [playbackRate]);
 
   const handleSurahSelect = useCallback((surah) => {
@@ -244,7 +252,6 @@ const AudioPlayerPage = () => {
     setIsSelectorOpen(false);
     setCurrentTime(0);
     currentTimeRef.current = 0;
-    
     setTimeout(() => {
       if (audioRef.current) {
         audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
@@ -256,13 +263,13 @@ const AudioPlayerPage = () => {
     if (repeatMode === 'one') {
       audioRef.current.currentTime = 0;
       audioRef.current.play();
-    } else if (autoContinue && selectedSurah && selectedSurah.id < 114) {
+    } else if (selectedSurah && selectedSurah.id < 114) {
       const nextSurah = surahList.find(s => s.id === selectedSurah.id + 1);
       if (nextSurah) handleSurahSelect(nextSurah);
     } else {
       setIsPlaying(false);
     }
-  }, [repeatMode, autoContinue, selectedSurah, surahList, handleSurahSelect]);
+  }, [repeatMode, selectedSurah, surahList, handleSurahSelect]);
 
   const formatTime = useCallback((time) => {
     const mins = Math.floor(time / 60);
@@ -275,17 +282,6 @@ const AudioPlayerPage = () => {
     const paddedId = String(selectedSurah.id).padStart(3, '0');
     return `${AUDIO_BASE_URL}/${paddedId}.mp3`;
   }, [selectedSurah]);
-
-  // Use Dynamic Row Height Hook for the new react-window API
-  const dynamicRowHeight = useDynamicRowHeight({
-    defaultRowHeight: 180,
-    key: selectedSurah?.id || 'default'
-  });
-
-  const rowProps = useMemo(() => ({
-    ayahs,
-    activeAyahIndex,
-  }), [ayahs, activeAyahIndex]);
 
   return (
     <div className="h-screen bg-[#020617] text-white flex flex-col font-sans overflow-hidden">
@@ -313,7 +309,7 @@ const AudioPlayerPage = () => {
               <ChevronDown className="w-4 h-4 md:w-5 md:h-5 text-emerald-400" />
             </div>
             <p className="text-[8px] md:text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em] mt-0.5">
-              {ayahs.length} Ayahs • {selectedSurah?.name_arabic}
+              {fullAyahs.length} Ayahs • {selectedSurah?.name_arabic}
             </p>
           </button>
         </div>
@@ -323,25 +319,45 @@ const AudioPlayerPage = () => {
         </button>
       </header>
 
-      {/* Main Content - Virtualized List */}
-      <main className="flex-1 relative z-10 pt-4">
-        {loading ? (
-          <div className="flex flex-col gap-4 max-w-2xl mx-auto mt-8">
-            <AyahSkeleton />
-            <AyahSkeleton />
-            <AyahSkeleton />
+      {/* Main Content - Progressive List */}
+      <main className="flex-1 overflow-y-auto no-scrollbar relative z-10 px-6 py-8 pb-48" ref={scrollContainerRef}>
+        {loading && renderedAyahs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full">
+            <SpecialLoader message="Opening Mushaf..." />
           </div>
         ) : (
-          <VirtualList
-            listRef={listRef}
-            height={window.innerHeight - 200}
-            rowCount={ayahs.length}
-            rowHeight={dynamicRowHeight}
-            width="100%"
-            rowComponent={AyahRow}
-            rowProps={rowProps}
-            className="no-scrollbar"
-          />
+          <div className="max-w-2xl mx-auto">
+            {/* Bismillah */}
+            {selectedSurah?.id !== 1 && selectedSurah?.id !== 9 && (
+              <div className="mb-12 text-center">
+                <h2 className="text-4xl md:text-5xl font-arabic text-emerald-50/90 leading-relaxed">
+                  بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
+                </h2>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-8 md:gap-12" dir="rtl">
+              {renderedAyahs.map((ayah, index) => (
+                <div 
+                  key={ayah.id} 
+                  ref={el => ayahRefs.current[index] = el}
+                >
+                  <AyahItem 
+                    ayah={ayah} 
+                    index={index} 
+                    isActive={activeAyahIndex === index}
+                    isPrevious={activeAyahIndex > index}
+                  />
+                </div>
+              ))}
+            </div>
+            
+            {renderedAyahs.length < fullAyahs.length && (
+              <div className="py-12 flex justify-center">
+                <Loader2 className="w-6 h-6 animate-spin text-emerald-500/40" />
+              </div>
+            )}
+          </div>
         )}
       </main>
 
@@ -395,7 +411,7 @@ const AudioPlayerPage = () => {
       <audio 
         ref={audioRef}
         src={audioUrl}
-        preload="metadata"
+        preload="auto"
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}
