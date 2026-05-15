@@ -318,6 +318,8 @@ const HifzTestMode = () => {
             .replace(/[ظذ]/g, "ز")
             .replace(/[ط]/g, "ت")
             .replace(/[ق]/g, "ك")
+            .replace(/[ح]/g, "ه") // Phonetic confusion: Hah and Heh
+            .replace(/[ع]/g, "ء") // Phonetic confusion: Ain and Hamza
             .replace(/[^\u0621-\u064A\s]/g, "") // Keep only Arabic and spaces
             .replace(/\s+/g, " ") 
             .trim();
@@ -869,11 +871,10 @@ const HifzTestMode = () => {
                 // STRICT mode: preserve Makhraj letters, require higher precision.
                 const isStrictMode = tajweedModeRef.current === 'STRICT';
                 const normalize = isStrictMode ? normalizeArabicStrict : normalizeArabic;
-                // STRICT thresholds: next-word=0.65, skip=0.90, jump=0.95
-                // NORMAL thresholds: next-word=0.50, skip=0.85, jump=0.90
+                // RELAXED thresholds: next-word=0.35, skip=0.75, jump=0.85
                 const thresholds = isStrictMode
-                    ? [0.65, 0.90, 0.95]
-                    : [0.50, 0.85, 0.90];
+                    ? [0.60, 0.85, 0.90]
+                    : [0.35, 0.75, 0.85];
 
                 // Priority loop: Check immediate word first with high sensitivity
                 for (let qOffset = 0; qOffset < syncWindow; qOffset++) {
@@ -891,53 +892,36 @@ const HifzTestMode = () => {
                     
                     const minThreshold = thresholds[Math.min(qOffset, 2)];
 
-                    if (currentScore > bestMatchScore && similarity >= minThreshold) {
+                    // STUCK RECOVERY: Lower threshold if stuck on this word for > 5s
+                    const timeOnThisWord = now - lastResultTimeRef.current; 
+                    const effectiveMinThreshold = (qOffset === 0 && timeOnThisWord > 5000) ? minThreshold * 0.7 : minThreshold;
+
+                    if (currentScore > bestMatchScore && similarity >= effectiveMinThreshold) {
                         // --- ELITE JUMP PROTECTION: Momentum Anchor ---
-                        // Only allow jumping if we've already matched some words in a row
                         if (qOffset > 0) {
-                            // Relaxed: allow 1-word skip even with 0 momentum if similarity is very high
-                            if (qOffset === 1 && similarity < 0.92 && consecutiveMatchCountRef.current < 1) continue; 
-                            
-                            // Deny larger jumps (2+ words) if no momentum
+                            if (qOffset === 1 && similarity < 0.85 && consecutiveMatchCountRef.current < 1) continue; 
                             if (qOffset > 1 && consecutiveMatchCountRef.current < 1) continue; 
-                            
-                            if (qOffset > 2) {
-                                if (consecutiveMatchCountRef.current < 3) continue; // Deny large jump: low momentum
-                                
-                                const nextSpoken = wordsToProcess[i + 1];
-                                const nextTarget = currentWords[targetIdx + 1];
-                                if (nextSpoken && nextTarget) {
-                                    const nextSim = calculatePhoneticSimilarity(normalize(nextSpoken), normalize(nextTarget.text));
-                                    if (nextSim < thresholds[1]) continue; 
-                                } else {
-                                    continue; 
-                                }
-                            }
+                            if (qOffset > 2 && consecutiveMatchCountRef.current < 2) continue; 
                         }
                         bestMatchScore = currentScore;
                         bestMatchSimilarity = similarity;
                         bestMatchIdx = targetIdx;
-
-                        // STRICT MODE: check Tajweed rule violations even on a match
-                        if (isStrictMode && qOffset === 0 && similarity < 0.90) {
-                            const strictNormSpoken = normalizeArabicStrict(spoken);
-                            const strictNormTarget = normalizeArabicStrict(targetWord.text);
-                            const violation = detectStrictTajweedViolation(strictNormSpoken, strictNormTarget);
-                            if (violation) {
-                                setFeedback(violation.message);
-                                setMinorMistakes(m => m + 1);
-                                setPronunciationIssues(prev => [
-                                    ...prev,
-                                    { word: targetWord.text, ...violation }
-                                ]);
-                                // Flash feedback briefly
-                                clearTimeout(correctionTimerRef.current);
-                                correctionTimerRef.current = setTimeout(() => setFeedback(""), 3000);
-                            }
+                    }
+                    
+                    // --- DUAL-WORD WINDOW CHECK ---
+                    // Case 1: Spoken word is part of the next word (e.g. "في" + "الارض")
+                    const nextSpoken = wordsToProcess[i + 1];
+                    if (nextSpoken && qOffset === 0) {
+                        const combinedSpoken = normalize(spoken + nextSpoken);
+                        const combinedSim = calculatePhoneticSimilarity(combinedSpoken, normalizedTarget);
+                        if (combinedSim > 0.85) {
+                            bestMatchScore = 2.0; // Force match
+                            bestMatchIdx = targetIdx;
+                            // We'll skip the next spoken word by incrementing the transcript pointer extra
+                            lastMatchedTranscriptWordIndexRef.current += 1; 
+                            i++; // Skip the next word in the current loop
                         }
                     }
-                    // If we find a perfect match at current position, stop looking
-                    if (similarity >= 0.95 && qOffset === 0) break;
                 }
 
                 if (bestMatchIdx !== -1) {
@@ -1128,7 +1112,6 @@ const HifzTestMode = () => {
                 } else if (event.error === 'network') {
                     setError("Network error. Please check your internet connection.");
                 } else if (event.error === 'no-speech') {
-                    // Ignore no-speech errors to avoid annoying the user
                 } else {
                     setError(`Microphone error: ${event.error}. Please refresh.`);
                 }
@@ -1665,6 +1648,21 @@ const HifzTestMode = () => {
                             </React.Fragment>
                         ))}
                     </div>
+
+                    {/* LIVE TRANSCRIPT BUBBLE */}
+                    <AnimatePresence>
+                        {isListening && liveTranscript && (
+                            <motion.div 
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 20 }}
+                                className="fixed bottom-32 left-1/2 -translate-x-1/2 w-[90%] max-w-sm glass-card p-3 text-center z-50 pointer-events-none"
+                            >
+                                <p className="text-[10px] text-emerald-400 font-black uppercase tracking-[0.2em] mb-1 opacity-50">Live Detection</p>
+                                <p className="text-sm font-arabic text-white/80 line-clamp-2" dir="rtl">{liveTranscript}</p>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </main>
 
                 {/* STRICT TAJWEED FEEDBACK BANNER */}
