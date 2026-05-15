@@ -33,7 +33,12 @@ const WordItem = React.memo(({ word, currentIndex, visibilityMode, isFlashing, s
                 scale: isCurrent ? 1.08 : 1,
                 y: isCurrent ? -2 : 0
             }}
-            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+            transition={{ 
+                type: "spring", 
+                stiffness: 200, 
+                damping: 25,
+                layout: { duration: 0.4, ease: "easeOut" }
+            }}
             style={{ fontSize: `${fontSize}px`, lineHeight: 1.8 }}
             className={`
                 mx-0.5 sm:mx-1 px-1.5 py-1 rounded-xl transition-all duration-500 inline-block font-arabic relative
@@ -46,7 +51,7 @@ const WordItem = React.memo(({ word, currentIndex, visibilityMode, isFlashing, s
                     : isCurrent
                         ? isFlashing
                             ? 'text-red-500 scale-110 drop-shadow-[0_0_15px_rgba(239,68,68,1)] animate-pulse'
-                            : 'text-white border-b-2 border-emerald-400 bg-emerald-500/20 shadow-[0_8px_20px_rgba(16,185,129,0.3)]'
+                            : 'text-white' // Styles moved to layout div
                         : visibilityMode === 'visible'
                             ? 'text-gray-400 opacity-40'
                             : 'text-white/5 blur-[5px] select-none'
@@ -56,11 +61,22 @@ const WordItem = React.memo(({ word, currentIndex, visibilityMode, isFlashing, s
         >
             {isCurrent && !isFlashing && (
                 <motion.div 
-                    layoutId="current-glow"
-                    className="absolute inset-0 bg-emerald-500/10 rounded-xl blur-lg -z-10"
-                    animate={{ opacity: [0.2, 0.5, 0.2] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                />
+                    layoutId="current-glow-v2"
+                    className="absolute inset-0 bg-emerald-500/20 border-b-2 border-emerald-400 rounded-xl shadow-[0_8px_25px_rgba(16,185,129,0.4)] -z-10"
+                    initial={false}
+                    transition={{ 
+                        type: "spring", 
+                        stiffness: 150, 
+                        damping: 30,
+                        opacity: { duration: 0.2 }
+                    }}
+                >
+                    <motion.div 
+                        className="absolute inset-0 bg-emerald-400/10 rounded-xl blur-md"
+                        animate={{ opacity: [0.3, 0.6, 0.3] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                    />
+                </motion.div>
             )}
             {shouldShowText || shouldShowHint ? word.text : word.text.replace(/./g, 'ـ')}
         </motion.span>
@@ -232,11 +248,13 @@ const HifzTestMode = () => {
 
     // --- UI Effects ---
 
-    // Scroll to current Ayah
+    // Throttled Scroll to current Ayah - only when Ayah changes
+    const lastScrolledAyahRef = useRef(null);
     useEffect(() => {
         if (view === 'test' && currentIndex >= 0) {
             const currentAyahNum = words[currentIndex]?.ayahNumber;
-            if (currentAyahNum && ayahRefs.current[currentAyahNum]) {
+            if (currentAyahNum && currentAyahNum !== lastScrolledAyahRef.current && ayahRefs.current[currentAyahNum]) {
+                lastScrolledAyahRef.current = currentAyahNum;
                 ayahRefs.current[currentAyahNum].scrollIntoView({
                     behavior: "smooth",
                     block: "center"
@@ -832,7 +850,7 @@ const HifzTestMode = () => {
             return;
         }
 
-        // STEP 2: Tracking Engine (DELTA + SLIDING WINDOW)
+        // STEP 2: Tracking Engine (SEQUENTIAL-FIRST MATCHING)
         if (currentView === 'test' && startDetectedRef.current) {
             const allSpokenWords = transcript.split(/\s+/).filter(s => s.trim());
             const currentWords = wordsRef.current;
@@ -840,103 +858,68 @@ const HifzTestMode = () => {
             
             if (cIndex >= currentWords.length) return;
 
-            // --- ELITE PERFORMANCE ENGINE (DELTA + SINGLE LOCK) ---
-            if (cIndex >= currentWords.length) return;
-
-            // SCALABILITY FIX 3: Guard against a stale or out-of-range pointer.
-            // After a recognition restart the transcript resets to a shorter array.
-            // Clamp the start index so we never slice past the end of the new array.
-            const rawStartIndex = lastMatchedTranscriptWordIndexRef.current + 1;
-            const startIndex = Math.min(rawStartIndex, allSpokenWords.length);
-            const wordsToProcess = allSpokenWords.slice(startIndex);
+            // Process all words from the transcript that haven't been matched yet
+            // We use a small overlap (2 words) to catch words that might have been 
+            // part of a previous partial match or mis-order.
+            const rawStartIndex = Math.max(0, lastMatchedTranscriptWordIndexRef.current - 1);
+            const wordsToProcess = allSpokenWords.slice(rawStartIndex);
             if (wordsToProcess.length === 0) return;
 
-            // RECOVERY: If we are stuck for more than 4 words, allow a broader re-sync
-            const wordsSinceLastMatch = allSpokenWords.length - lastMatchedTranscriptWordIndexRef.current;
-            const syncWindow = (wordsSinceLastMatch > 5) ? 10 : 6;
-
+            const isStrictMode = tajweedModeRef.current === 'STRICT';
+            const normalize = isStrictMode ? normalizeArabicStrict : normalizeArabic;
+            
             let matchFoundInThisCall = false;
+            let tempLastMatchedIdx = lastMatchedTranscriptWordIndexRef.current;
 
             for (let i = 0; i < wordsToProcess.length; i++) {
-                const globalTranscriptIndex = startIndex + i;
+                const globalTranscriptIndex = rawStartIndex + i;
+                
+                // Skip if we already matched this specific transcript word
+                if (globalTranscriptIndex <= lastMatchedTranscriptWordIndexRef.current && matchFoundInThisCall) continue;
+
                 const spoken = wordsToProcess[i];
-                const normalizedSpoken = normalizeArabic(spoken);
+                const normalizedSpoken = normalize(spoken);
                 if (!normalizedSpoken || normalizedSpoken.length < 1) continue;
 
                 let bestMatchIdx = -1;
-                let bestMatchScore = -100;
                 let bestMatchSimilarity = 0;
 
-                // Pick normalizer and thresholds based on Tajweed mode.
-                // STRICT mode: preserve Makhraj letters, require higher precision.
-                const isStrictMode = tajweedModeRef.current === 'STRICT';
-                const normalize = isStrictMode ? normalizeArabicStrict : normalizeArabic;
-                // SEQUENTIAL thresholds: next-word=0.30, skip=0.95, jump=0.98
-                const thresholds = isStrictMode
-                    ? [0.60, 0.92, 0.96]
-                    : [0.30, 0.95, 0.98];
-
-                // Priority loop: Check immediate word first with high sensitivity
-                for (let qOffset = 0; qOffset < syncWindow; qOffset++) {
+                // --- SEQUENTIAL-FIRST SEARCH ---
+                // We look ahead up to 5 words, but we apply HEAVY penalties for skips
+                // to ensure we don't detect the second word before the first if they are both there.
+                for (let qOffset = 0; qOffset < 5; qOffset++) {
                     const targetIdx = cIndex + qOffset;
                     if (targetIdx >= currentWords.length) break;
 
                     const targetWord = currentWords[targetIdx];
                     const normalizedTarget = normalize(targetWord.text);
-                    const normalizedSpokenForMatch = normalize(spoken);
-                    const similarity = calculatePhoneticSimilarity(normalizedSpokenForMatch, normalizedTarget);
+                    const similarity = calculatePhoneticSimilarity(normalizedSpoken, normalizedTarget);
 
-                    // Dynamic Penalty: Heavier as we move further away to prevent "jumps"
-                    const distancePenalty = qOffset * 0.35; 
-                    const currentScore = similarity - distancePenalty;
+                    // Skip thresholds: 
+                    // qOffset 0 (Next word): 0.35
+                    // qOffset 1 (Skip 1): 0.85
+                    // qOffset 2+ (Skip 2+): 0.95
+                    const minThreshold = qOffset === 0 ? 0.35 : (qOffset === 1 ? 0.85 : 0.95);
                     
-                    const minThreshold = thresholds[Math.min(qOffset, 2)];
-
-                    // STUCK RECOVERY: Lower threshold if stuck on this word for > 8s
-                    const timeOnThisWord = now - lastResultTimeRef.current; 
-                    const effectiveMinThreshold = (qOffset === 0 && timeOnThisWord > 8000) ? 0.25 : minThreshold;
-
-                    if (currentScore > bestMatchScore && similarity >= effectiveMinThreshold) {
-                        // --- CONTINUOUS SPEECH GUARD ---
-                        // If user is speaking continuously, be EXTREMELY strict about skips
-                        const isSpeakingContinuously = timeSinceLastSpeech < 1.5;
-                        
+                    if (similarity >= minThreshold) {
+                        // If we are about to skip, check if a LATER transcript word matches the CURRENT word.
+                        // This prevents "detecting second word first" if both are in the transcript.
                         if (qOffset > 0) {
-                            // Deny ANY skip if speaking continuously unless it's a perfect match
-                            if (isSpeakingContinuously && similarity < 0.98) continue;
-                            
-                            // Otherwise, require very high momentum for skips
-                            if (consecutiveMatchCountRef.current < 3) continue; 
-                            
-                            // Confirmation match for jumps
-                            if (qOffset >= 2) {
-                                const nextSpoken = wordsToProcess[i + 1];
-                                const nextTarget = currentWords[targetIdx + 1];
-                                if (nextSpoken && nextTarget) {
-                                    const nextSim = calculatePhoneticSimilarity(normalize(nextSpoken), normalize(nextTarget.text));
-                                    if (nextSim < 0.85) continue; // Higher confirmation threshold
-                                } else {
-                                    continue;
+                            let currentWordFoundLater = false;
+                            for (let k = i + 1; k < Math.min(i + 3, wordsToProcess.length); k++) {
+                                const laterSpoken = normalize(wordsToProcess[k]);
+                                const laterSim = calculatePhoneticSimilarity(laterSpoken, normalize(currentWords[cIndex].text));
+                                if (laterSim > 0.8) {
+                                    currentWordFoundLater = true;
+                                    break;
                                 }
                             }
+                            if (currentWordFoundLater) continue; // Don't skip, the current word is coming up in the transcript!
                         }
-                        bestMatchScore = currentScore;
-                        bestMatchSimilarity = similarity;
-                        bestMatchIdx = targetIdx;
-                    }
-                    
-                    // --- DUAL-WORD WINDOW CHECK ---
-                    // Case 1: Spoken word is part of the next word (e.g. "في" + "الارض")
-                    const nextSpoken = wordsToProcess[i + 1];
-                    if (nextSpoken && qOffset === 0) {
-                        const combinedSpoken = normalize(spoken + nextSpoken);
-                        const combinedSim = calculatePhoneticSimilarity(combinedSpoken, normalizedTarget);
-                        if (combinedSim > 0.85) {
-                            bestMatchScore = 2.0; // Force match
+
+                        if (similarity > bestMatchSimilarity) {
+                            bestMatchSimilarity = similarity;
                             bestMatchIdx = targetIdx;
-                            // We'll skip the next spoken word by incrementing the transcript pointer extra
-                            lastMatchedTranscriptWordIndexRef.current += 1; 
-                            i++; // Skip the next word in the current loop
                         }
                     }
                 }
@@ -944,17 +927,21 @@ const HifzTestMode = () => {
                 if (bestMatchIdx !== -1) {
                     matchFoundInThisCall = true;
                     consecutiveMatchCountRef.current += 1;
+                    tempLastMatchedIdx = globalTranscriptIndex;
+
                     const statusUpdates = {};
-                    for (let j = currentIndexRef.current; j <= bestMatchIdx; j++) {
+                    for (let j = cIndex; j <= bestMatchIdx; j++) {
                         statusUpdates[j] = (j === bestMatchIdx) ? "correct" : "skipped";
                     }
 
-                    const advanceAmount = (bestMatchIdx - currentIndexRef.current) + 1;
+                    const advanceAmount = (bestMatchIdx - cIndex) + 1;
                     setCorrectCount(prev => prev + advanceAmount);
                     cIndex = bestMatchIdx + 1;
                     setCurrentIndex(cIndex);
                     currentIndexRef.current = cIndex;
                     setWords(prev => prev.map((w, idx) => statusUpdates[idx] ? { ...w, status: statusUpdates[idx] } : w));
+                    
+                    // Update the ref so we don't re-process these transcript words
                     lastMatchedTranscriptWordIndexRef.current = globalTranscriptIndex;
 
                     if (cIndex >= currentWords.length) {
