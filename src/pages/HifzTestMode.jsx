@@ -26,22 +26,22 @@ const WordItem = React.memo(({ word, currentIndex, visibilityMode, isFlashing, s
 
     return (
         <motion.span 
-            layout
+            layout="position"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ 
                 opacity: 1, 
-                scale: isCurrent ? 1.08 : 1,
-                y: isCurrent ? -2 : 0
+                scale: isCurrent ? 1.1 : 1,
+                y: isCurrent ? -3 : 0
             }}
             transition={{ 
                 type: "spring", 
-                stiffness: 200, 
-                damping: 25,
-                layout: { duration: 0.4, ease: "easeOut" }
+                stiffness: 100, 
+                damping: 35, // More damping for "water" feel
+                layout: { duration: 0.5, ease: [0.23, 1, 0.32, 1] } // Smooth cubic-bezier
             }}
             style={{ fontSize: `${fontSize}px`, lineHeight: 1.8 }}
             className={`
-                mx-0.5 sm:mx-1 px-1.5 py-1 rounded-xl transition-all duration-500 inline-block font-arabic relative
+                mx-0.5 sm:mx-1 px-1.5 py-1 rounded-xl transition-all duration-700 inline-block font-arabic relative
                 ${isRecited
                     ? word.status === 'mistake'
                         ? 'text-red-400/90 line-through decoration-red-500/50'
@@ -51,7 +51,7 @@ const WordItem = React.memo(({ word, currentIndex, visibilityMode, isFlashing, s
                     : isCurrent
                         ? isFlashing
                             ? 'text-red-500 scale-110 drop-shadow-[0_0_15px_rgba(239,68,68,1)] animate-pulse'
-                            : 'text-white' // Styles moved to layout div
+                            : 'text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]' 
                         : visibilityMode === 'visible'
                             ? 'text-gray-400 opacity-40'
                             : 'text-white/5 blur-[5px] select-none'
@@ -61,20 +61,20 @@ const WordItem = React.memo(({ word, currentIndex, visibilityMode, isFlashing, s
         >
             {isCurrent && !isFlashing && (
                 <motion.div 
-                    layoutId="current-glow-v2"
-                    className="absolute inset-0 bg-emerald-500/20 border-b-2 border-emerald-400 rounded-xl shadow-[0_8px_25px_rgba(16,185,129,0.4)] -z-10"
+                    layoutId="current-glow-v3"
+                    className="absolute inset-0 bg-emerald-500/20 border-b-2 border-emerald-400 rounded-xl shadow-[0_10px_30px_rgba(16,185,129,0.4)] -z-10"
                     initial={false}
                     transition={{ 
                         type: "spring", 
-                        stiffness: 150, 
-                        damping: 30,
-                        opacity: { duration: 0.2 }
+                        stiffness: 80, 
+                        damping: 40,
+                        opacity: { duration: 0.3 }
                     }}
                 >
                     <motion.div 
-                        className="absolute inset-0 bg-emerald-400/10 rounded-xl blur-md"
-                        animate={{ opacity: [0.3, 0.6, 0.3] }}
-                        transition={{ duration: 2, repeat: Infinity }}
+                        className="absolute inset-0 bg-emerald-400/10 rounded-xl blur-lg"
+                        animate={{ opacity: [0.4, 0.7, 0.4] }}
+                        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
                     />
                 </motion.div>
             )}
@@ -248,17 +248,25 @@ const HifzTestMode = () => {
 
     // --- UI Effects ---
 
-    // Throttled Scroll to current Ayah - only when Ayah changes
+    // High-Precision Smooth Scroll to current Ayah/Word
     const lastScrolledAyahRef = useRef(null);
     useEffect(() => {
         if (view === 'test' && currentIndex >= 0) {
             const currentAyahNum = words[currentIndex]?.ayahNumber;
-            if (currentAyahNum && currentAyahNum !== lastScrolledAyahRef.current && ayahRefs.current[currentAyahNum]) {
-                lastScrolledAyahRef.current = currentAyahNum;
-                ayahRefs.current[currentAyahNum].scrollIntoView({
-                    behavior: "smooth",
-                    block: "center"
-                });
+            if (currentAyahNum && ayahRefs.current[currentAyahNum]) {
+                const element = ayahRefs.current[currentAyahNum];
+                const rect = element.getBoundingClientRect();
+                
+                // Only scroll if the element is not nicely centered or if we changed Ayah
+                const isCentered = rect.top > window.innerHeight * 0.2 && rect.bottom < window.innerHeight * 0.7;
+                
+                if (!isCentered || currentAyahNum !== lastScrolledAyahRef.current) {
+                    lastScrolledAyahRef.current = currentAyahNum;
+                    element.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center"
+                    });
+                }
             }
         }
     }, [currentIndex, view, words]);
@@ -885,8 +893,7 @@ const HifzTestMode = () => {
                 let bestMatchSimilarity = 0;
 
                 // --- SEQUENTIAL-FIRST SEARCH ---
-                // We look ahead up to 5 words, but we apply HEAVY penalties for skips
-                // to ensure we don't detect the second word before the first if they are both there.
+                // We look ahead up to 5 words, but we apply EXTREMELY HEAVY penalties for skips.
                 for (let qOffset = 0; qOffset < 5; qOffset++) {
                     const targetIdx = cIndex + qOffset;
                     if (targetIdx >= currentWords.length) break;
@@ -896,25 +903,33 @@ const HifzTestMode = () => {
                     const similarity = calculatePhoneticSimilarity(normalizedSpoken, normalizedTarget);
 
                     // Skip thresholds: 
-                    // qOffset 0 (Next word): 0.35
-                    // qOffset 1 (Skip 1): 0.85
-                    // qOffset 2+ (Skip 2+): 0.95
-                    const minThreshold = qOffset === 0 ? 0.35 : (qOffset === 1 ? 0.85 : 0.95);
+                    // qOffset 0 (Next word): 0.35 (Very lenient for next word)
+                    // qOffset 1 (Skip 1): 0.92 (Very strict)
+                    // qOffset 2+ (Skip 2+): 0.98 (Nearly perfect match required)
+                    const minThreshold = qOffset === 0 ? 0.35 : (qOffset === 1 ? 0.92 : 0.98);
                     
                     if (similarity >= minThreshold) {
-                        // If we are about to skip, check if a LATER transcript word matches the CURRENT word.
-                        // This prevents "detecting second word first" if both are in the transcript.
+                        // ADDITIONAL SKIP GUARDS:
                         if (qOffset > 0) {
+                            // 1. Momentum Check: Only allow skips if we've matched at least 2 words recently
+                            if (consecutiveMatchCountRef.current < 2) continue;
+
+                            // 2. Look-ahead in transcript: Is the CURRENT word coming up soon?
                             let currentWordFoundLater = false;
-                            for (let k = i + 1; k < Math.min(i + 3, wordsToProcess.length); k++) {
+                            for (let k = i + 1; k < Math.min(i + 4, wordsToProcess.length); k++) {
                                 const laterSpoken = normalize(wordsToProcess[k]);
                                 const laterSim = calculatePhoneticSimilarity(laterSpoken, normalize(currentWords[cIndex].text));
-                                if (laterSim > 0.8) {
+                                if (laterSim > 0.75) {
                                     currentWordFoundLater = true;
                                     break;
                                 }
                             }
-                            if (currentWordFoundLater) continue; // Don't skip, the current word is coming up in the transcript!
+                            if (currentWordFoundLater) continue; 
+
+                            // 3. Penalty for jumping across Ayahs (unless very confident)
+                            if (currentWords[targetIdx].ayahNumber !== currentWords[cIndex].ayahNumber && similarity < 0.96) {
+                                continue;
+                            }
                         }
 
                         if (similarity > bestMatchSimilarity) {
