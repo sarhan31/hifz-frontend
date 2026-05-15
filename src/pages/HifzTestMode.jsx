@@ -871,10 +871,10 @@ const HifzTestMode = () => {
                 // STRICT mode: preserve Makhraj letters, require higher precision.
                 const isStrictMode = tajweedModeRef.current === 'STRICT';
                 const normalize = isStrictMode ? normalizeArabicStrict : normalizeArabic;
-                // BALANCED thresholds: next-word=0.45, skip=0.85, jump=0.92
+                // SEQUENTIAL thresholds: next-word=0.30, skip=0.95, jump=0.98
                 const thresholds = isStrictMode
-                    ? [0.65, 0.90, 0.95]
-                    : [0.45, 0.85, 0.92];
+                    ? [0.60, 0.92, 0.96]
+                    : [0.30, 0.95, 0.98];
 
                 // Priority loop: Check immediate word first with high sensitivity
                 for (let qOffset = 0; qOffset < syncWindow; qOffset++) {
@@ -892,33 +892,33 @@ const HifzTestMode = () => {
                     
                     const minThreshold = thresholds[Math.min(qOffset, 2)];
 
-                    // STUCK RECOVERY: Lower threshold if stuck on this word for > 8s (more patient)
+                    // STUCK RECOVERY: Lower threshold if stuck on this word for > 8s
                     const timeOnThisWord = now - lastResultTimeRef.current; 
-                    const effectiveMinThreshold = (qOffset === 0 && timeOnThisWord > 8000) ? minThreshold * 0.8 : minThreshold;
+                    const effectiveMinThreshold = (qOffset === 0 && timeOnThisWord > 8000) ? 0.25 : minThreshold;
 
                     if (currentScore > bestMatchScore && similarity >= effectiveMinThreshold) {
-                        // --- JUMP PROTECTION: Require Confirmation ---
+                        // --- CONTINUOUS SPEECH GUARD ---
+                        // If user is speaking continuously, be EXTREMELY strict about skips
+                        const isSpeakingContinuously = timeSinceLastSpeech < 1.5;
+                        
                         if (qOffset > 0) {
-                            // Require higher momentum for skips
-                            if (consecutiveMatchCountRef.current < 2) continue; 
+                            // Deny ANY skip if speaking continuously unless it's a perfect match
+                            if (isSpeakingContinuously && similarity < 0.98) continue;
                             
-                            // If jumping more than 1 word, require confirmation match
+                            // Otherwise, require very high momentum for skips
+                            if (consecutiveMatchCountRef.current < 3) continue; 
+                            
+                            // Confirmation match for jumps
                             if (qOffset >= 2) {
                                 const nextSpoken = wordsToProcess[i + 1];
                                 const nextTarget = currentWords[targetIdx + 1];
                                 if (nextSpoken && nextTarget) {
                                     const nextSim = calculatePhoneticSimilarity(normalize(nextSpoken), normalize(nextTarget.text));
-                                    // If next word doesn't confirm the jump, deny the jump
-                                    if (nextSim < 0.70) continue; 
-                                } else if (targetIdx < currentWords.length - 1) {
-                                    // No next spoken word yet, but there is a next target word.
-                                    // Deny jump to be safe until we hear more.
+                                    if (nextSim < 0.85) continue; // Higher confirmation threshold
+                                } else {
                                     continue;
                                 }
                             }
-                            
-                            // Prevent common short words from triggering jumps easily
-                            if (normalizedTarget.length <= 3 && similarity < 0.95) continue;
                         }
                         bestMatchScore = currentScore;
                         bestMatchSimilarity = similarity;
