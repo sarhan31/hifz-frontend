@@ -850,7 +850,8 @@ const HifzTestMode = () => {
             if (wordsToProcess.length === 0) return;
 
             // RECOVERY: If we are stuck for more than 4 words, allow a broader re-sync
-            const syncWindow = (allSpokenWords.length - lastMatchedTranscriptWordIndexRef.current > 4) ? 8 : 4;
+            const wordsSinceLastMatch = allSpokenWords.length - lastMatchedTranscriptWordIndexRef.current;
+            const syncWindow = (wordsSinceLastMatch > 4) ? 12 : 6;
 
             let matchFoundInThisCall = false;
 
@@ -894,10 +895,14 @@ const HifzTestMode = () => {
                         // --- ELITE JUMP PROTECTION: Momentum Anchor ---
                         // Only allow jumping if we've already matched some words in a row
                         if (qOffset > 0) {
-                            if (consecutiveMatchCountRef.current < 1) continue; // Deny any skip if no momentum
+                            // Relaxed: allow 1-word skip even with 0 momentum if similarity is very high
+                            if (qOffset === 1 && similarity < 0.92 && consecutiveMatchCountRef.current < 1) continue; 
                             
-                            if (qOffset > 1) {
-                                if (consecutiveMatchCountRef.current < 2) continue; // Deny jump: low momentum
+                            // Deny larger jumps (2+ words) if no momentum
+                            if (qOffset > 1 && consecutiveMatchCountRef.current < 1) continue; 
+                            
+                            if (qOffset > 2) {
+                                if (consecutiveMatchCountRef.current < 3) continue; // Deny large jump: low momentum
                                 
                                 const nextSpoken = wordsToProcess[i + 1];
                                 const nextTarget = currentWords[targetIdx + 1];
@@ -1052,110 +1057,143 @@ const HifzTestMode = () => {
             return;
         }
 
-        // --- PRE-INITIALIZATION ---
-        try {
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            if (AudioContext) {
-                const ctx = new AudioContext();
-                if (ctx.state === 'suspended') ctx.resume();
-            }
-        } catch (e) {}
+        // --- PRE-INITIALIZATION & PERMISSION CHECK ---
+        const initMic = async () => {
+            try {
+                // Force a media stream request to ensure browser permissions are active
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                // We don't need the stream itself for SpeechRecognition, so we close it
+                stream.getTracks().forEach(track => track.stop());
 
-        const recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = 'ar-SA';
-        
-        recognition.onstart = () => {
-            setIsListening(true);
-            isRecognitionActiveRef.current = true;
-            micStartTimeRef.current = Date.now();
-        };
-        
-        recognition.onend = () => {
-            // Auto-restart if we're still in a state where we should be listening
-            if (isRecognitionActiveRef.current && (viewRef.current === 'test' || viewRef.current === 'menu')) {
-                // Use a small delay to allow the browser to clean up the previous session
-                setTimeout(() => {
-                    if (isRecognitionActiveRef.current) {
-                        try {
-                            // SCALABILITY FIX 1: Reset the transcript pointer on every restart.
-                            // Each call to .start() gives the browser a fresh event.results list
-                            // (indices reset to 0). If we don't reset this ref, startIndex in
-                            // handleSpeech runs past the new transcript → engine processes nothing.
-                            lastMatchedTranscriptWordIndexRef.current = -1;
-                            lastProcessedTranscriptRef.current = "";
-                            recognitionRef.current?.start();
-                        } catch (e) {
-                            // If it fails, try one more time or just wait for next onend
-                        }
-                    }
-                }, 300);
-            } else {
-                setIsListening(false);
-                isRecognitionActiveRef.current = false;
-                micStartTimeRef.current = null;
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (AudioContext) {
+                    const ctx = new AudioContext();
+                    if (ctx.state === 'suspended') await ctx.resume();
+                }
+                return true;
+            } catch (e) {
+                console.error("Mic init error:", e);
+                if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+                    setError("Microphone access denied. Please enable it in your browser settings and refresh.");
+                } else {
+                    setError("Could not access microphone. Please check your hardware.");
+                }
+                return false;
             }
         };
 
-        recognition.onerror = (event) => {
-            console.error("SpeechRecognition error:", event.error);
-            if (event.error === 'not-allowed') setError("Microphone access denied.");
-            if (event.error === 'network') setError("Network error. Please check connection.");
-        };
+        const start = async () => {
+            const hasPermission = await initMic();
+            if (!hasPermission) return;
 
-        recognition.onresult = (event) => {
-            lastResultTimeRef.current = Date.now(); // Feed the watchdog
-
-            // SCALABILITY FIX 2: Cap the transcript to the last MAX_SPOKEN_WORDS.
-            // event.results accumulates all results within a session. For long or
-            // fast recitations this can grow to hundreds of entries, causing O(n)
-            // work on every single result event. We cap it to a fixed window.
-            const MAX_SPOKEN_WORDS = 60;
-            const allWords = Array.from(event.results)
-                .map(result => result[0].transcript)
-                .join(" ")
-                .split(/\s+/)
-                .filter(Boolean);
-
-            // If accumulated words exceed the cap, trim the START and shift the
-            // matched-index pointer down by the same amount so relative positions stay valid.
-            if (allWords.length > MAX_SPOKEN_WORDS) {
-                const excess = allWords.length - MAX_SPOKEN_WORDS;
-                // Adjust pointer so it stays valid inside the trimmed slice
-                lastMatchedTranscriptWordIndexRef.current = Math.max(
-                    -1,
-                    lastMatchedTranscriptWordIndexRef.current - excess
-                );
-                const transcript = allWords.slice(excess).join(" ");
-                if (handleSpeechRef.current) handleSpeechRef.current(transcript);
-            } else {
-                const transcript = allWords.join(" ");
-                if (handleSpeechRef.current) handleSpeechRef.current(transcript);
-            }
-        };
-
-        // --- WATCHDOG: Restart if engine stalls ---
-        if (watchdogIntervalRef.current) clearInterval(watchdogIntervalRef.current);
-        watchdogIntervalRef.current = setInterval(() => {
-            const now = Date.now();
-            const timeSinceLastResult = now - lastResultTimeRef.current;
+            const recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'ar-SA';
             
-            if (isRecognitionActiveRef.current && timeSinceLastResult > 4000) {
-                console.log("[Watchdog] Engine stall detected. Restarting...");
-                lastResultTimeRef.current = now; // Prevent infinite immediate restarts
-                try {
-                    recognition.stop(); // This will trigger onend -> restart
-                } catch (e) {}
-            }
-        }, 2000);
+            recognition.onstart = () => {
+                setIsListening(true);
+                isRecognitionActiveRef.current = true;
+                micStartTimeRef.current = Date.now();
+                setError(null); // Clear any previous errors
+            };
         
-        recognitionRef.current = recognition;
-        try {
-            recognition.start();
-        } catch (e) {
-            console.error("Start error:", e);
-        }
+            recognition.onend = () => {
+                // Auto-restart if we're still in a state where we should be listening
+                if (isRecognitionActiveRef.current && (viewRef.current === 'test' || viewRef.current === 'menu')) {
+                    // Use a small delay to allow the browser to clean up the previous session
+                    setTimeout(() => {
+                        if (isRecognitionActiveRef.current) {
+                            try {
+                                // SCALABILITY FIX 1: Reset the transcript pointer on every restart.
+                                lastMatchedTranscriptWordIndexRef.current = -1;
+                                lastProcessedTranscriptRef.current = "";
+                                recognitionRef.current?.start();
+                            } catch (e) {
+                                // If it fails, try one more time or just wait for next onend
+                            }
+                        }
+                    }, 300);
+                } else {
+                    setIsListening(false);
+                    isRecognitionActiveRef.current = false;
+                    micStartTimeRef.current = null;
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error("SpeechRecognition error:", event.error);
+                if (event.error === 'not-allowed') {
+                    setError("Microphone access denied. Note: Speech Recognition requires HTTPS or 'localhost' to work. Check your address bar.");
+                } else if (event.error === 'network') {
+                    setError("Network error. Please check your internet connection.");
+                } else if (event.error === 'no-speech') {
+                    // Ignore no-speech errors to avoid annoying the user
+                } else {
+                    setError(`Microphone error: ${event.error}. Please refresh.`);
+                }
+            };
+
+            recognition.onresult = (event) => {
+                lastResultTimeRef.current = Date.now(); // Feed the watchdog
+
+                // SCALABILITY FIX 2: Cap the transcript to the last MAX_SPOKEN_WORDS.
+                const MAX_SPOKEN_WORDS = 60;
+                const allWords = Array.from(event.results)
+                    .map(result => result[0].transcript)
+                    .join(" ")
+                    .split(/\s+/)
+                    .filter(Boolean);
+
+                // If accumulated words exceed the cap, trim the START and shift the
+                // matched-index pointer down by the same amount so relative positions stay valid.
+                if (allWords.length > MAX_SPOKEN_WORDS) {
+                    const excess = allWords.length - MAX_SPOKEN_WORDS;
+                    lastMatchedTranscriptWordIndexRef.current = Math.max(
+                        -1,
+                        lastMatchedTranscriptWordIndexRef.current - excess
+                    );
+                    const transcript = allWords.slice(excess).join(" ");
+                    if (handleSpeechRef.current) handleSpeechRef.current(transcript);
+                } else {
+                    const transcript = allWords.join(" ");
+                    if (handleSpeechRef.current) handleSpeechRef.current(transcript);
+                }
+            };
+
+            // --- WATCHDOG: Restart if engine stalls ---
+            if (watchdogIntervalRef.current) clearInterval(watchdogIntervalRef.current);
+            watchdogIntervalRef.current = setInterval(() => {
+                const now = Date.now();
+                const timeSinceLastResult = now - lastResultTimeRef.current;
+                
+                // Watchdog 1: Restart if engine stalls (no results at all)
+                if (isRecognitionActiveRef.current && timeSinceLastResult > 4000) {
+                    console.log("[Watchdog] Engine stall detected. Restarting...");
+                    lastResultTimeRef.current = now; 
+                    try {
+                        recognition.stop(); 
+                    } catch (e) {}
+                }
+
+                // Watchdog 2: If we've heard speech recently but haven't matched anything in 10 seconds, 
+                // force a recognition restart to clear any internal engine confusion.
+                const timeSinceLastMatch = now - lastResultTimeRef.current; 
+                if (isRecognitionActiveRef.current && viewRef.current === 'test' && timeSinceLastMatch > 10000 && !isPaused) {
+                    console.log("[Watchdog] No matches for 10s. Forcing restart...");
+                    try { recognition.stop(); } catch (e) {}
+                }
+            }, 2000);
+            
+            recognitionRef.current = recognition;
+            try {
+                recognition.start();
+            } catch (e) {
+                console.error("Start error:", e);
+            }
+        };
+
+        start();
     };
 
     useEffect(() => {
@@ -1654,11 +1692,20 @@ const HifzTestMode = () => {
                         </div>
                         <div className="flex items-center gap-4">
                             <button 
-                                onClick={() => setRecitationSpeed(s => s === 1.5 ? 1.0 : s + 0.25 > 1.5 ? 0.75 : s + 0.25)}
-                                className="w-10 h-10 flex flex-col items-center justify-center text-slate-400 hover:text-emerald-400 transition-colors"
+                                onClick={() => {
+                                    const nextIdx = currentIndex + 1;
+                                    if (nextIdx < words.length) {
+                                        setWords(prev => prev.map((w, i) => i === currentIndex ? { ...w, status: 'skipped' } : w));
+                                        setCurrentIndex(nextIdx);
+                                        currentIndexRef.current = nextIdx;
+                                        setMinorMistakes(m => m + 1);
+                                    }
+                                }}
+                                className="w-10 h-10 flex flex-col items-center justify-center text-slate-500 hover:text-amber-400 transition-colors"
+                                title="Skip current word"
                             >
-                                <FastForward className="w-4 h-4" />
-                                <span className="text-[8px] font-bold mt-0.5">{recitationSpeed}x</span>
+                                <RotateCcw className="w-4 h-4 -rotate-90" />
+                                <span className="text-[8px] font-bold mt-0.5">SKIP</span>
                             </button>
 
                             <motion.button 
