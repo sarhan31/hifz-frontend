@@ -853,7 +853,7 @@ const HifzTestMode = () => {
 
             // RECOVERY: If we are stuck for more than 4 words, allow a broader re-sync
             const wordsSinceLastMatch = allSpokenWords.length - lastMatchedTranscriptWordIndexRef.current;
-            const syncWindow = (wordsSinceLastMatch > 4) ? 12 : 6;
+            const syncWindow = (wordsSinceLastMatch > 5) ? 10 : 6;
 
             let matchFoundInThisCall = false;
 
@@ -871,10 +871,10 @@ const HifzTestMode = () => {
                 // STRICT mode: preserve Makhraj letters, require higher precision.
                 const isStrictMode = tajweedModeRef.current === 'STRICT';
                 const normalize = isStrictMode ? normalizeArabicStrict : normalizeArabic;
-                // RELAXED thresholds: next-word=0.35, skip=0.75, jump=0.85
+                // BALANCED thresholds: next-word=0.45, skip=0.85, jump=0.92
                 const thresholds = isStrictMode
-                    ? [0.60, 0.85, 0.90]
-                    : [0.35, 0.75, 0.85];
+                    ? [0.65, 0.90, 0.95]
+                    : [0.45, 0.85, 0.92];
 
                 // Priority loop: Check immediate word first with high sensitivity
                 for (let qOffset = 0; qOffset < syncWindow; qOffset++) {
@@ -892,16 +892,33 @@ const HifzTestMode = () => {
                     
                     const minThreshold = thresholds[Math.min(qOffset, 2)];
 
-                    // STUCK RECOVERY: Lower threshold if stuck on this word for > 5s
+                    // STUCK RECOVERY: Lower threshold if stuck on this word for > 8s (more patient)
                     const timeOnThisWord = now - lastResultTimeRef.current; 
-                    const effectiveMinThreshold = (qOffset === 0 && timeOnThisWord > 5000) ? minThreshold * 0.7 : minThreshold;
+                    const effectiveMinThreshold = (qOffset === 0 && timeOnThisWord > 8000) ? minThreshold * 0.8 : minThreshold;
 
                     if (currentScore > bestMatchScore && similarity >= effectiveMinThreshold) {
-                        // --- ELITE JUMP PROTECTION: Momentum Anchor ---
+                        // --- JUMP PROTECTION: Require Confirmation ---
                         if (qOffset > 0) {
-                            if (qOffset === 1 && similarity < 0.85 && consecutiveMatchCountRef.current < 1) continue; 
-                            if (qOffset > 1 && consecutiveMatchCountRef.current < 1) continue; 
-                            if (qOffset > 2 && consecutiveMatchCountRef.current < 2) continue; 
+                            // Require higher momentum for skips
+                            if (consecutiveMatchCountRef.current < 2) continue; 
+                            
+                            // If jumping more than 1 word, require confirmation match
+                            if (qOffset >= 2) {
+                                const nextSpoken = wordsToProcess[i + 1];
+                                const nextTarget = currentWords[targetIdx + 1];
+                                if (nextSpoken && nextTarget) {
+                                    const nextSim = calculatePhoneticSimilarity(normalize(nextSpoken), normalize(nextTarget.text));
+                                    // If next word doesn't confirm the jump, deny the jump
+                                    if (nextSim < 0.70) continue; 
+                                } else if (targetIdx < currentWords.length - 1) {
+                                    // No next spoken word yet, but there is a next target word.
+                                    // Deny jump to be safe until we hear more.
+                                    continue;
+                                }
+                            }
+                            
+                            // Prevent common short words from triggering jumps easily
+                            if (normalizedTarget.length <= 3 && similarity < 0.95) continue;
                         }
                         bestMatchScore = currentScore;
                         bestMatchSimilarity = similarity;
