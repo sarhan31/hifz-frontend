@@ -16,12 +16,13 @@ const API_URL = import.meta.env.VITE_API_URL;
 
 // --- Components ---
 
-const WordItem = React.memo(({ word, activeAyahNumber, visibilityMode, isFlashing, showHint, fontSize = 56 }) => {
+const WordItem = React.memo(({ word, currentIndex, activeAyahNumber, visibilityMode, isFlashing, showHint, fontSize = 56 }) => {
+    const isCurrent = word.globalIndex === currentIndex;
+    const isRecited = word.globalIndex < currentIndex;
     const isCurrentAyah = word.ayahNumber === activeAyahNumber;
-    const isRecited = word.ayahNumber < activeAyahNumber;
 
-    // In 'visible' mode, we show everything. In 'hidden' (Test) mode, we show previously recited or hints.
-    const shouldShowText = visibilityMode === 'visible' || isRecited || (isCurrentAyah && showHint);
+    // In 'visible' mode, we show everything. In 'hidden' (Test) mode, we show previously recited or active hints.
+    const shouldShowText = visibilityMode === 'visible' || isRecited || (isCurrent && showHint);
 
     return (
         <motion.span 
@@ -29,44 +30,46 @@ const WordItem = React.memo(({ word, activeAyahNumber, visibilityMode, isFlashin
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ 
                 opacity: 1, 
-                scale: isCurrentAyah ? 1.04 : 1,
-                y: isCurrentAyah ? -1 : 0
+                scale: isCurrent ? 1.06 : 1,
+                y: isCurrent ? -2 : 0
             }}
             transition={{ 
                 type: "spring", 
-                stiffness: 100, 
-                damping: 35,
-                layout: { duration: 0.5, ease: [0.23, 1, 0.32, 1] } 
+                stiffness: 120, 
+                damping: 30,
+                layout: { duration: 0.4, ease: [0.23, 1, 0.32, 1] } 
             }}
             style={{ fontSize: `${fontSize}px`, lineHeight: 1.8 }}
             className={`
-                mx-0.5 sm:mx-1 px-1 py-0.5 rounded-lg transition-all duration-700 inline-block font-arabic relative
+                mx-0.5 sm:mx-1 px-1.5 py-0.5 rounded-lg transition-all duration-500 inline-block font-arabic relative
                 ${isRecited
                     ? word.status === 'skipped'
-                        ? 'text-slate-500/50 line-through decoration-slate-600/30'
+                        ? 'text-slate-500/50 line-through decoration-slate-600/30 font-medium'
                         : 'text-emerald-300 drop-shadow-[0_0_12px_rgba(110,231,183,0.5)] font-bold'
-                    : isCurrentAyah
+                    : isCurrent
                         ? isFlashing
                             ? 'text-red-500 scale-105 drop-shadow-[0_0_15px_rgba(239,68,68,1)] animate-pulse'
                             : showHint
-                                ? 'text-white/90 drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]'
-                                : 'text-white/20 blur-[6px] select-none scale-[0.98]'
-                        : visibilityMode === 'visible'
-                            ? 'text-gray-400 opacity-40'
-                            : 'text-white/5 blur-[12px] select-none opacity-20'
+                                ? 'text-white/95 drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]'
+                                : 'text-white/30 blur-[4px] select-none scale-[0.98]'
+                        : isCurrentAyah
+                            ? 'text-white/10 blur-[7px] select-none opacity-25'
+                            : visibilityMode === 'visible'
+                                ? 'text-gray-400 opacity-40'
+                                : 'text-white/5 blur-[12px] select-none opacity-10'
                 }
             `}
         >
-            {isCurrentAyah && !isFlashing && !showHint && (
+            {isCurrent && !isFlashing && !showHint && (
                 <motion.div 
-                    layoutId="current-glow-ayah"
+                    layoutId="current-glow-word"
                     className="absolute inset-x-0 -bottom-1 h-0.5 bg-emerald-400/80 shadow-[0_0_8px_rgba(52,211,153,0.8)]"
                     initial={false}
                     transition={{ 
                         type: "spring", 
-                        stiffness: 80, 
-                        damping: 40,
-                        opacity: { duration: 0.3 }
+                        stiffness: 100, 
+                        damping: 30,
+                        opacity: { duration: 0.2 }
                     }}
                 />
             )}
@@ -857,7 +860,7 @@ const HifzTestMode = () => {
             return;
         }
 
-        // STEP 2: Tracking Engine (AYAH-BY-AYAH MATCHING)
+        // STEP 2: Tracking Engine (AYAH-SCOPED WORD-BY-WORD MATCHING)
         if (currentView === 'test' && startDetectedRef.current) {
             const allSpokenWords = transcript.split(/\s+/).filter(s => s.trim());
             const currentWords = wordsRef.current;
@@ -868,88 +871,70 @@ const HifzTestMode = () => {
             const activeAyahNum = currentWords[cIndex]?.ayahNumber;
             if (!activeAyahNum) return;
 
-            // Get all words belonging to the current active Ayah
+            // Find start and end indices of the active Ayah
             const activeAyahWordObjects = currentWords.filter(w => w.ayahNumber === activeAyahNum);
             const activeAyahStartIndex = currentWords.findIndex(w => w.ayahNumber === activeAyahNum);
-            
-            // Normalize active Ayah text
+            const activeAyahEndIndex = activeAyahStartIndex + activeAyahWordObjects.length - 1;
+
             const isStrictMode = tajweedModeRef.current === 'STRICT';
             const normalize = isStrictMode ? normalizeArabicStrict : normalizeArabic;
-            
-            const activeAyahCleanWords = activeAyahWordObjects.map(w => normalize(w.text)).filter(Boolean);
-            
-            if (activeAyahCleanWords.length === 0) return;
 
-            // Get the last N spoken words to match against (with a generous window)
-            const lookupLength = Math.max(10, Math.round(activeAyahCleanWords.length * 1.5));
-            const recentSpokenWords = allSpokenWords.slice(-lookupLength).map(w => normalize(w)).filter(Boolean);
+            // Normalize active word and the look-ahead candidates *within this active Ayah*
+            // This prevents jumping to other Ayahs on repeating words!
+            const maxLookAhead = Math.min(3, activeAyahEndIndex - cIndex + 1);
+            
+            // Get the last N spoken words to match against (with a small focused window)
+            const recentSpokenWords = allSpokenWords.slice(-6).map(w => normalize(w)).filter(Boolean);
 
             if (recentSpokenWords.length === 0) return;
 
-            // --- AYAH LEVEL SIMILARITY MATCH ---
-            // Calculate how many of the target Ayah words are matched in the recent spoken words
-            let matchCount = 0;
-            const matchedSpokenIndices = new Set();
+            let bestMatchOffset = -1;
+            let bestMatchSimilarity = 0;
 
-            activeAyahCleanWords.forEach(targetWord => {
-                // Find if there is any word in recentSpokenWords with high phonetic similarity
+            // Check if any of the recent spoken words matches the active word or look-ahead candidates in the active Ayah
+            for (let qOffset = 0; qOffset < maxLookAhead; qOffset++) {
+                const targetIdx = cIndex + qOffset;
+                const targetWord = normalize(currentWords[targetIdx].text);
+                
+                // Compare with each of the recent spoken words
                 for (let sIdx = 0; sIdx < recentSpokenWords.length; sIdx++) {
-                    if (matchedSpokenIndices.has(sIdx)) continue;
                     const sim = calculatePhoneticSimilarity(recentSpokenWords[sIdx], targetWord);
-                    if (sim >= 0.72) {
-                        matchCount++;
-                        matchedSpokenIndices.add(sIdx);
-                        break;
+                    
+                    // Match thresholds: next word is lenient, skipped words inside the Ayah are strict
+                    const minThreshold = qOffset === 0 ? 0.72 : 0.88;
+                    
+                    if (sim >= minThreshold && sim > bestMatchSimilarity) {
+                        bestMatchSimilarity = sim;
+                        bestMatchOffset = qOffset;
                     }
-                }
-            });
-
-            const overlapRatio = matchCount / activeAyahCleanWords.length;
-            
-            // Determine match threshold: lenient for normal, strict for strict mode
-            // Also, shorter Ayahs need higher overlap ratio to avoid false positives
-            const minRatio = activeAyahCleanWords.length <= 2 
-                ? 0.80 
-                : (isStrictMode ? 0.75 : 0.58);
-
-            let isMatched = overlapRatio >= minRatio;
-
-            // --- KEYWORD ENDING MATCH (Secondary Guard) ---
-            // If the user spoke the last 2 words of the Ayah correctly in sequence, we can also consider it complete!
-            if (!isMatched && activeAyahCleanWords.length >= 3 && recentSpokenWords.length >= 2) {
-                const targetEnd1 = activeAyahCleanWords[activeAyahCleanWords.length - 1];
-                const targetEnd2 = activeAyahCleanWords[activeAyahCleanWords.length - 2];
-                
-                const spokenEnd1 = recentSpokenWords[recentSpokenWords.length - 1];
-                const spokenEnd2 = recentSpokenWords[recentSpokenWords.length - 2];
-                
-                if (calculatePhoneticSimilarity(spokenEnd1, targetEnd1) >= 0.80 && 
-                    calculatePhoneticSimilarity(spokenEnd2, targetEnd2) >= 0.80) {
-                    isMatched = true;
                 }
             }
 
-            if (isMatched) {
-                // Glorious Match! Mark all words in this Ayah as correct
+            if (bestMatchOffset !== -1) {
+                // Glorious Match found within the active Ayah!
                 const statusUpdates = {};
-                for (let idx = activeAyahStartIndex; idx < activeAyahStartIndex + activeAyahWordObjects.length; idx++) {
-                    statusUpdates[idx] = "correct";
+                for (let idx = cIndex; idx <= cIndex + bestMatchOffset; idx++) {
+                    statusUpdates[idx] = (idx === cIndex + bestMatchOffset) ? "correct" : "skipped";
                 }
 
-                const nextAyahStartIndex = activeAyahStartIndex + activeAyahWordObjects.length;
+                const nextIndex = cIndex + bestMatchOffset + 1;
 
-                setCorrectCount(prev => prev + activeAyahWordObjects.length);
-                setCurrentIndex(nextAyahStartIndex);
-                currentIndexRef.current = nextAyahStartIndex;
+                setCorrectCount(prev => prev + bestMatchOffset + 1);
+                
+                // Set minor mistakes count for skipped words inside the Ayah
+                if (bestMatchOffset > 0) {
+                    setMinorMistakes(prev => prev + bestMatchOffset);
+                }
+
+                setCurrentIndex(nextIndex);
+                currentIndexRef.current = nextIndex;
                 
                 setWords(prev => prev.map((w, idx) => statusUpdates[idx] ? { ...w, status: statusUpdates[idx] } : w));
                 consecutiveMatchCountRef.current += 1;
-                
-                // Trigger visual success flash or action
-                setFeedback(""); 
-                
-                // If it was the last Ayah of the Surah, complete!
-                if (nextAyahStartIndex >= currentWords.length) {
+                setFeedback("");
+
+                // Complete Surah check
+                if (nextIndex >= currentWords.length) {
                     const finalAccuracy = getAccuracyValue();
                     setIsCompleted(true);
                     setEndTime(Date.now());
@@ -962,61 +947,51 @@ const HifzTestMode = () => {
                 return;
             }
 
-            // --- SKIP DETECTION ---
-            // Let's look ahead: did the user skip the current Ayah and start reciting the NEXT Ayah?
-            // Only look ahead if there is a next Ayah
-            const nextAyahStartIndex = activeAyahStartIndex + activeAyahWordObjects.length;
+            // --- AYAH SKIP DETECTION (Look-ahead to next Ayah) ---
+            // If the user skipped the remainder of the current Ayah and started reciting the NEXT Ayah
+            const nextAyahStartIndex = activeAyahEndIndex + 1;
             if (nextAyahStartIndex < currentWords.length) {
                 const nextAyahNum = currentWords[nextAyahStartIndex].ayahNumber;
                 const nextAyahWordObjects = currentWords.filter(w => w.ayahNumber === nextAyahNum);
-                const nextAyahCleanWords = nextAyahWordObjects.map(w => normalize(w.text)).filter(Boolean);
+                
+                // Let's check the first 3 words of the next Ayah
+                const nextAyahLookAheadCount = Math.min(3, nextAyahWordObjects.length);
+                const nextAyahCleanWords = nextAyahWordObjects.slice(0, nextAyahLookAheadCount).map(w => normalize(w.text)).filter(Boolean);
 
                 if (nextAyahCleanWords.length > 0) {
                     let nextMatchCount = 0;
-                    const nextMatchedSpokenIndices = new Set();
-
+                    
                     nextAyahCleanWords.forEach(targetWord => {
-                        for (let sIdx = 0; sIdx < recentSpokenWords.length; sIdx++) {
-                            if (nextMatchedSpokenIndices.has(sIdx)) continue;
-                            const sim = calculatePhoneticSimilarity(recentSpokenWords[sIdx], targetWord);
-                            if (sim >= 0.72) {
-                                nextMatchCount++;
-                                nextMatchedSpokenIndices.add(sIdx);
-                                break;
-                            }
-                        }
+                        const hasMatch = recentSpokenWords.some(spokenWord => 
+                            calculatePhoneticSimilarity(spokenWord, targetWord) >= 0.78
+                        );
+                        if (hasMatch) nextMatchCount++;
                     });
 
-                    const nextOverlapRatio = nextMatchCount / nextAyahCleanWords.length;
-                    const nextMinRatio = nextAyahCleanWords.length <= 2 ? 0.80 : 0.65;
+                    // If they matched the next Ayah's beginning words, jump directly!
+                    if (nextMatchCount >= Math.min(2, nextAyahCleanWords.length)) {
+                        console.log(`[Engine] User skipped remainder of Ayah ${activeAyahNum} -> Advancing to ${nextAyahNum}`);
 
-                    // If they matched the next Ayah with high confidence, AND they did NOT match the current Ayah
-                    if (nextOverlapRatio >= nextMinRatio && overlapRatio < 0.30) {
-                        console.log(`[Engine] User skipped Ayah ${activeAyahNum} -> Advancing to ${nextAyahNum}`);
-                        
-                        // Mark current active Ayah words as skipped
                         const statusUpdates = {};
-                        for (let idx = activeAyahStartIndex; idx < nextAyahStartIndex; idx++) {
+                        // Mark current Ayah remaining words as skipped
+                        for (let idx = cIndex; idx <= activeAyahEndIndex; idx++) {
                             statusUpdates[idx] = "skipped";
                         }
                         
-                        // Mark next Ayah words as correct
-                        for (let idx = nextAyahStartIndex; idx < nextAyahStartIndex + nextAyahWordObjects.length; idx++) {
-                            statusUpdates[idx] = "correct";
-                        }
-
-                        const nextNextAyahStartIndex = nextAyahStartIndex + nextAyahWordObjects.length;
+                        // Mark first matched word of the next Ayah as correct
+                        statusUpdates[nextAyahStartIndex] = "correct";
 
                         setMinorMistakes(prev => prev + 1); // Record skip as a minor mistake
-                        setFeedback(`Skipped Ayah ${activeAyahNum}`);
+                        setFeedback(`Skipped to Ayah ${nextAyahNum}`);
                         setTimeout(() => setFeedback(""), 3000);
 
-                        setCurrentIndex(nextNextAyahStartIndex);
-                        currentIndexRef.current = nextNextAyahStartIndex;
+                        const nextIndex = nextAyahStartIndex + 1;
+                        setCurrentIndex(nextIndex);
+                        currentIndexRef.current = nextIndex;
 
                         setWords(prev => prev.map((w, idx) => statusUpdates[idx] ? { ...w, status: statusUpdates[idx] } : w));
                         
-                        if (nextNextAyahStartIndex >= currentWords.length) {
+                        if (nextIndex >= currentWords.length) {
                             const finalAccuracy = getAccuracyValue();
                             setIsCompleted(true);
                             setEndTime(Date.now());
@@ -1031,29 +1006,23 @@ const HifzTestMode = () => {
             }
 
             // --- STRICT TAJWEED & PRONUNCIATION DETECTION ---
-            // If the user spoke words and didn't trigger a match or skip, check for pronunciation issues
             if (isStrictMode && recentSpokenWords.length > 0) {
-                // Find target word corresponding to what they spoke (approximate matching)
                 const latestSpoken = recentSpokenWords[recentSpokenWords.length - 1];
-                
-                // Find if this spoken word was an attempt at any of the active Ayah's words
-                activeAyahCleanWords.forEach((targetWord, targetWIdx) => {
-                    const targetObj = activeAyahWordObjects[targetWIdx];
-                    // Skip if already flagged
-                    if (pronunciationIssues.some(p => p.word === targetObj.text)) return;
+                const activeWordText = normalize(currentWords[cIndex].text);
 
-                    const sim = calculatePhoneticSimilarity(latestSpoken, targetWord);
+                if (!pronunciationIssues.some(p => p.word === currentWords[cIndex].text)) {
+                    const sim = calculatePhoneticSimilarity(latestSpoken, activeWordText);
                     if (sim >= 0.50 && sim < 0.85) {
-                        const violation = detectStrictTajweedViolation(latestSpoken, targetWord);
+                        const violation = detectStrictTajweedViolation(latestSpoken, activeWordText);
                         if (violation) {
                             setFeedback(violation.message);
-                            setPronunciationIssues(prev => [...prev, { word: targetObj.text, ...violation }]);
+                            setPronunciationIssues(prev => [...prev, { word: currentWords[cIndex].text, ...violation }]);
                             clearTimeout(correctionTimerRef.current);
                             correctionTimerRef.current = setTimeout(() => setFeedback(""), 3500);
                             setMinorMistakes(m => m + 1);
                         }
                     }
-                });
+                }
             }
         }
     };
@@ -1711,7 +1680,7 @@ const HifzTestMode = () => {
                             <React.Fragment key={ayah.id}>
                                 {ayah.words.map((word, wIdx) => (
                                     <span key={word.id} ref={el => { if (ayah.id === currentAyahNum && wIdx === 0) ayahRefs.current[ayah.id] = el; }}>
-                                        <WordItem word={word} activeAyahNumber={currentAyahNum} visibilityMode={visibilityMode} isFlashing={mistakeFlash && word.ayahNumber === currentAyahNum} showHint={showHint} fontSize={fontSize} />
+                                        <WordItem word={word} currentIndex={currentIndex} activeAyahNumber={currentAyahNum} visibilityMode={visibilityMode} isFlashing={mistakeFlash && word.ayahNumber === currentAyahNum} showHint={showHint} fontSize={fontSize} />
                                     </span>
                                 ))}
                                 <span className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-emerald-500/30 text-emerald-500/60 font-arabic text-xs mx-1 translate-y-2">{ayah.id}</span>
