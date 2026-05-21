@@ -863,12 +863,49 @@ const HifzTestMode = () => {
 
         // STEP 2: Tracking Engine (AYAH-SCOPED WORD-BY-WORD MATCHING)
         if (currentView === 'test' && startDetectedRef.current) {
-            const allSpokenWords = transcript.split(/\s+/).filter(s => s.trim());
+            const rawSpokenWords = transcript.split(/\s+/).filter(s => s.trim());
             const currentWords = wordsRef.current;
             const cIndex = currentIndexRef.current;
             
             if (cIndex >= currentWords.length) return;
             
+            const isStrictMode = tajweedModeRef.current === 'STRICT';
+            const normalize = isStrictMode ? normalizeArabicStrict : normalizeArabic;
+
+            let allSpokenWords = [...rawSpokenWords];
+
+            // Clean leading Auzubillah or Bismillah at the beginning of the test if not expected by the database text.
+            // This prevents incorrect matches or skipping first words.
+            if (cIndex < 10 && allSpokenWords.length > 0) {
+                const targetStartsWithBismillah = normalize(currentWords[0]?.text) === 'بسم';
+                const normalizedSpoken = allSpokenWords.map(w => normalize(w));
+
+                // 1. Check for "A'udhu billahi minashaitanir rajim" variations at the start
+                let skipAuzubillahCount = 0;
+                if (normalizedSpoken[0] === 'اعوذ') {
+                    skipAuzubillahCount = 1;
+                    if (normalizedSpoken[1] === 'بالله') skipAuzubillahCount = 2;
+                    if (normalizedSpoken[2] === 'من') skipAuzubillahCount = 3;
+                    if (normalizedSpoken[3] === 'الشيطان') skipAuzubillahCount = 4;
+                    if (normalizedSpoken[4] === 'الرجيم') skipAuzubillahCount = 5;
+                }
+
+                if (skipAuzubillahCount > 0) {
+                    allSpokenWords = allSpokenWords.slice(skipAuzubillahCount);
+                    normalizedSpoken.splice(0, skipAuzubillahCount);
+                }
+
+                // 2. Check for "Bismillahir Rahmanir Rahim" variations at the start (only if the surah doesn't officially begin with Bismillah)
+                if (!targetStartsWithBismillah && normalizedSpoken[0] === 'بسم') {
+                    let skipBismillahCount = 1;
+                    if (normalizedSpoken[1] === 'الله') skipBismillahCount = 2;
+                    if (normalizedSpoken[2] === 'الرحمن') skipBismillahCount = 3;
+                    if (normalizedSpoken[3] === 'الرحيم') skipBismillahCount = 4;
+
+                    allSpokenWords = allSpokenWords.slice(skipBismillahCount);
+                }
+            }
+
             const activeAyahNum = currentWords[cIndex]?.ayahNumber;
             if (!activeAyahNum) return;
 
@@ -876,9 +913,6 @@ const HifzTestMode = () => {
             const activeAyahWordObjects = currentWords.filter(w => w.ayahNumber === activeAyahNum);
             const activeAyahStartIndex = currentWords.findIndex(w => w.ayahNumber === activeAyahNum);
             const activeAyahEndIndex = activeAyahStartIndex + activeAyahWordObjects.length - 1;
-
-            const isStrictMode = tajweedModeRef.current === 'STRICT';
-            const normalize = isStrictMode ? normalizeArabicStrict : normalizeArabic;
 
             // Normalize active word and the look-ahead candidates *within this active Ayah*
             // This prevents jumping to other Ayahs on repeating words!
