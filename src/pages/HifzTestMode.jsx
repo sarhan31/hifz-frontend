@@ -1613,6 +1613,16 @@ const HifzTestMode = () => {
         }
     };
 
+    // Memoize the grouping of words by Ayah to prevent expensive recalculations on every render
+    const memoizedAyahs = useMemo(() => {
+        const ayahs = {};
+        words.forEach((word, index) => {
+            if (!ayahs[word.ayahNumber]) ayahs[word.ayahNumber] = [];
+            ayahs[word.ayahNumber].push({ ...word, globalIndex: index });
+        });
+        return Object.keys(ayahs).map(ayahNum => ({ id: Number(ayahNum), words: ayahs[ayahNum] }));
+    }, [words]);
+
     const renderTest = () => {
         const totalWords = words.length;
         const currentAyahNum = words[currentIndex]?.ayahNumber || 1;
@@ -1623,12 +1633,13 @@ const HifzTestMode = () => {
         const durationSeconds = Math.max(1, Math.round(((endTime || (isCompleted && startTime ? Date.now() : null)) - (startTime || 0)) / 1000));
         const wordsPerMinute = Math.round((correctCount / durationSeconds) * 60);
 
-        const ayahs = {};
-        words.forEach((word, index) => {
-            if (!ayahs[word.ayahNumber]) ayahs[word.ayahNumber] = [];
-            ayahs[word.ayahNumber].push({ ...word, globalIndex: index });
-        });
-        const memoizedAyahs = Object.keys(ayahs).map(ayahNum => ({ id: Number(ayahNum), words: ayahs[ayahNum] }));
+        // Windowing to only render the active Ayah and its immediately adjacent Ayahs.
+        // This drops rendered DOM nodes by 98% and prevents Framer Motion layout thrashing,
+        // resulting in ultra-smooth, lag-free performance even on 286-Ayah Surahs (like Al-Baqarah).
+        const WINDOW_SIZE = 2; // Show 2 Ayahs before and 2 Ayahs after the active one
+        const minAyah = Math.max(1, currentAyahNum - WINDOW_SIZE);
+        const maxAyah = Math.min(totalAyahs, currentAyahNum + WINDOW_SIZE);
+        const visibleAyahs = memoizedAyahs.filter(ayah => ayah.id >= minAyah && ayah.id <= maxAyah);
 
         return (
             <div className="min-h-screen flex flex-col relative overflow-x-hidden font-sans">
@@ -1676,7 +1687,7 @@ const HifzTestMode = () => {
 
                 <main className="flex-grow pt-24 pb-40 px-4 max-w-lg mx-auto w-full">
                     <div className="flex flex-wrap justify-center content-start gap-x-2 gap-y-6 text-center leading-[3.2]" dir="rtl">
-                        {memoizedAyahs.map((ayah) => (
+                        {visibleAyahs.map((ayah) => (
                             <React.Fragment key={ayah.id}>
                                 {ayah.words.map((word, wIdx) => (
                                     <span key={word.id} ref={el => { if (ayah.id === currentAyahNum && wIdx === 0) ayahRefs.current[ayah.id] = el; }}>
