@@ -243,25 +243,26 @@ const HifzTestMode = () => {
 
     // --- UI Effects ---
 
-    // High-Precision Smooth Scroll to current Ayah/Word
+    // High-Precision Smooth Scroll to current Ayah
     const lastScrolledAyahRef = useRef(null);
     useEffect(() => {
         if (view === 'test' && currentIndex >= 0) {
             const currentAyahNum = words[currentIndex]?.ayahNumber;
-            if (currentAyahNum && ayahRefs.current[currentAyahNum]) {
-                const element = ayahRefs.current[currentAyahNum];
-                const rect = element.getBoundingClientRect();
+            
+            // Only trigger scroll when the active Ayah changes, preventing scroll stutter
+            if (currentAyahNum && currentAyahNum !== lastScrolledAyahRef.current) {
+                lastScrolledAyahRef.current = currentAyahNum;
                 
-                // Only scroll if the element is not nicely centered or if we changed Ayah
-                const isCentered = rect.top > window.innerHeight * 0.2 && rect.bottom < window.innerHeight * 0.7;
-                
-                if (!isCentered || currentAyahNum !== lastScrolledAyahRef.current) {
-                    lastScrolledAyahRef.current = currentAyahNum;
-                    element.scrollIntoView({
-                        behavior: "smooth",
-                        block: "center"
-                    });
-                }
+                // Slight delay ensures React commit is finished and element is positioned
+                setTimeout(() => {
+                    const element = ayahRefs.current[currentAyahNum];
+                    if (element) {
+                        element.scrollIntoView({
+                            behavior: "smooth",
+                            block: "center"
+                        });
+                    }
+                }, 80);
             }
         }
     }, [currentIndex, view, words]);
@@ -1633,12 +1634,11 @@ const HifzTestMode = () => {
         const durationSeconds = Math.max(1, Math.round(((endTime || (isCompleted && startTime ? Date.now() : null)) - (startTime || 0)) / 1000));
         const wordsPerMinute = Math.round((correctCount / durationSeconds) * 60);
 
-        // Windowing to only render the active Ayah and its immediately adjacent Ayahs.
-        // This drops rendered DOM nodes by 98% and prevents Framer Motion layout thrashing,
-        // resulting in ultra-smooth, lag-free performance even on 286-Ayah Surahs (like Al-Baqarah).
-        const WINDOW_SIZE = 2; // Show 2 Ayahs before and 2 Ayahs after the active one
-        const minAyah = Math.max(1, currentAyahNum - WINDOW_SIZE);
-        const maxAyah = Math.min(totalAyahs, currentAyahNum + WINDOW_SIZE);
+        // Progressive Rendering to prevent unmounting elements above the active Ayah.
+        // By setting minAyah to 1, we NEVER unmount preceding Ayahs, which completely
+        // eliminates browser layout shifts and scroll jumps. We progressively render up to 4 Ayahs ahead.
+        const minAyah = 1;
+        const maxAyah = Math.min(totalAyahs, currentAyahNum + 4);
         const visibleAyahs = memoizedAyahs.filter(ayah => ayah.id >= minAyah && ayah.id <= maxAyah);
 
         return (
@@ -1690,7 +1690,7 @@ const HifzTestMode = () => {
                         {visibleAyahs.map((ayah) => (
                             <React.Fragment key={ayah.id}>
                                 {ayah.words.map((word, wIdx) => (
-                                    <span key={word.id} ref={el => { if (ayah.id === currentAyahNum && wIdx === 0) ayahRefs.current[ayah.id] = el; }}>
+                                    <span key={word.id} ref={el => { if (wIdx === 0) ayahRefs.current[ayah.id] = el; }}>
                                         <WordItem word={word} currentIndex={currentIndex} activeAyahNumber={currentAyahNum} visibilityMode={visibilityMode} isFlashing={mistakeFlash && word.ayahNumber === currentAyahNum} showHint={showHint} fontSize={fontSize} />
                                     </span>
                                 ))}
