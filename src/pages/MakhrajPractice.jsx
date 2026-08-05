@@ -11,8 +11,7 @@ const MakhrajPractice = () => {
   const { language } = useLanguage();
   const navigate = useNavigate();
   const [selectedLetter, setSelectedLetter] = useState(null);
-  const SKIP_LOCAL_AUDIO = true; // Set to false once files are uploaded to public/makhraj/
-
+  const SKIP_LOCAL_AUDIO = false;
 
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef(null);
@@ -27,64 +26,59 @@ const MakhrajPractice = () => {
     }
   };
 
+  const handleTTS = (letter) => {
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(letter);
+      utterance.lang = 'ar-SA';
+      utterance.rate = 0.7; // Slightly slower for clarity
+      utterance.pitch = 1.1; // Slightly higher for better resonance
+
+      const voices = window.speechSynthesis.getVoices();
+      const arabicVoice = voices.find(v => v.lang.includes('ar') && (v.name.includes('Natural') || v.name.includes('Premium')))
+                       || voices.find(v => v.lang.includes('ar'));
+
+      if (arabicVoice) utterance.voice = arabicVoice;
+
+      utterance.onend = () => setIsPlaying(false);
+      utterance.onerror = () => setIsPlaying(false);
+
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    } else {
+      setIsPlaying(false);
+    }
+  };
+
   const playAudio = (audioPath, letter) => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
     }
 
+    window.speechSynthesis.cancel();
     setIsPlaying(true);
 
-    // Skip local audio and go straight to TTS if files are missing
     if (SKIP_LOCAL_AUDIO) {
-        handleTTS();
-        return;
+      handleTTS(letter);
+      return;
     }
 
-    // Primary: Try local audio file
+    // Try local audio file first
     const audio = new Audio(audioPath);
     audioRef.current = audio;
 
-
-    const handleTTS = () => {
-        // High Quality Arabic TTS Fallback
-        if ('speechSynthesis' in window) {
-            const utterance = new SpeechSynthesisUtterance(letter);
-            utterance.lang = 'ar-SA'; 
-            utterance.rate = 0.7; // Slightly slower for clarity
-            utterance.pitch = 1.1; // Slightly higher for better resonance
-            
-            const voices = window.speechSynthesis.getVoices();
-            // Try to find a premium/natural Arabic voice if available
-            const arabicVoice = voices.find(v => v.lang.includes('ar') && (v.name.includes('Natural') || v.name.includes('Premium'))) 
-                             || voices.find(v => v.lang.includes('ar'));
-            
-            if (arabicVoice) utterance.voice = arabicVoice;
-
-            utterance.onend = () => setIsPlaying(false);
-            utterance.onerror = () => setIsPlaying(false);
-            
-            window.speechSynthesis.cancel(); 
-            window.speechSynthesis.speak(utterance);
-        } else {
-            setIsPlaying(false);
-        }
-    };
-
     audio.onended = () => {
-        setIsPlaying(false);
-        audioRef.current = null;
+      setIsPlaying(false);
+      audioRef.current = null;
     };
 
     audio.onerror = () => {
-        // If file is missing (404), seamlessly switch to TTS
-        handleTTS();
+      // If file fails, seamlessly switch to TTS fallback
+      handleTTS(letter);
     };
 
-    // Use a small timeout to let the error handler catch missing files
     audio.play().catch(() => {
-        // Catches "NotSupportedError" or missing files
-        handleTTS();
+      handleTTS(letter);
     });
   };
 

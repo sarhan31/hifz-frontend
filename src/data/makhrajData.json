@@ -275,7 +275,7 @@
       "y": 205
     }
   },
-  "m": {
+  "م": {
     "place_en": "Between the lips (dry part)",
     "place_hi": "दोनों होठों के बीच",
     "place_gu": "બંને હોઠ વચ્ચે",
@@ -321,6 +321,18 @@
     "articulation": {
       "x": 90,
       "y": 230
+    }
+  },
+  "ء": {
+    "place_en": "Bottom of the throat (Al-Aqsa Al-Halq)",
+    "place_hi": "गले का निचला भाग (अक़्सा अल-हल्क़)",
+    "place_gu": "ગળાનો નીચેનો ભાગ (અક્સા અલ-હલ્ક)",
+    "place_ur": "حلق کا نچلا حصہ (اقصیٰ الحلق)",
+    "audio": "/makhraj/hamza.mp3",
+    "diagram": "/makhraj-diagrams/hamza.svg",
+    "articulation": {
+      "x": 280,
+      "y": 420
     }
   },
   "ي": {
