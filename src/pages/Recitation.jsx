@@ -65,75 +65,134 @@ const Recitation = () => {
   const SILENCE_THRESHOLD = 20; 
   const PAUSE_DURATION_THRESHOLD = 1500; 
 
+  const alignmentTimerRef = useRef(null);
+
+  // Instant local Arabic normalization for 0ms speech feedback
+  const normalizeArabic = (text) => {
+    if (!text) return "";
+    return text
+      .toLowerCase()
+      .replace(/[ًٌٍَُِّْـ]/g, "")
+      .replace(/[أإآٱ]/g, "ا")
+      .replace(/[ىيئ]/g, "ي")
+      .replace(/ة/g, "ه")
+      .replace(/[\u064B-\u065F]/g, "")
+      .replace(/[^\u0621-\u064A\s]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  };
+
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
       recognition.lang = 'ar-SA';
 
-      recognition.onresult = async (event) => {
+      recognition.onresult = (event) => {
         let fullTranscript = "";
         for (let i = 0; i < event.results.length; i++) {
-            fullTranscript += event.results[i][0].transcript + " ";
+          fullTranscript += event.results[i][0].transcript + " ";
         }
+        const spokenText = fullTranscript.trim();
+        if (!spokenText) return;
 
-        try {
-          const response = await axios.post(`${API_URL}/api/alignment`, {
-            expectedText: expectedTextRef.current || fullTranscript.trim(),
-            spokenText: fullTranscript.trim()
-          });
-
-          const comparison = response.data || [];
-          setAlignedWords(comparison);
-
+        // 1. INSTANT LOCAL ALIGNMENT (0ms Latency UI Feedback)
+        const spokenWords = spokenText.split(/\s+/).map(normalizeArabic).filter(Boolean);
+        if (spokenWords.length > 0) {
           setWords(prev => {
             if (!prev || prev.length === 0) return prev;
+            let spokenIdx = 0;
+            let lastMatched = -1;
 
             const updated = prev.map((w, index) => {
-              const align = comparison[index];
-              if (!align) return w;
+              const normExp = normalizeArabic(w.text);
+              let status = w.status === 'correct' ? 'correct' : 'hidden';
 
-              let status = 'hidden';
-              if (align.status === 'correct') {
-                status = 'correct';
-              } else if (align.status === 'minor') {
-                status = 'minor';
-              } else if (align.status === 'mismatch' || align.status === 'major') {
-                status = 'major';
-              } else if (align.status === 'missing') {
-                status = 'hidden';
+              if (spokenIdx < spokenWords.length) {
+                const normSpoken = spokenWords[spokenIdx];
+                if (normSpoken === normExp || (normSpoken.length >= 2 && normExp.includes(normSpoken))) {
+                  status = 'correct';
+                  spokenIdx++;
+                  lastMatched = index;
+                } else {
+                  // Look-ahead next 3 spoken words for slight mispronunciations
+                  for (let ahead = spokenIdx + 1; ahead < Math.min(spokenIdx + 4, spokenWords.length); ahead++) {
+                    if (spokenWords[ahead] === normExp) {
+                      status = 'correct';
+                      spokenIdx = ahead + 1;
+                      lastMatched = index;
+                      break;
+                    }
+                  }
+                }
               }
-
               return { ...w, status };
             });
 
-            const lastIndex = comparison.reduce((acc, item, index) => {
-              if (item && item.status && item.status !== 'missing') {
-                return index;
-              }
-              return acc;
-            }, -1);
-
-            if (lastIndex !== -1) {
-              setCurrentWordIndex(lastIndex);
+            if (lastMatched !== -1) {
+              setCurrentWordIndex(lastMatched);
             }
-
             return updated;
           });
-        } catch (err) {
-          console.error("Alignment API error:", err);
         }
+
+        // 2. DEBOUNCED BACKEND ALIGNMENT (Runs in background without blocking UI)
+        clearTimeout(alignmentTimerRef.current);
+        alignmentTimerRef.current = setTimeout(async () => {
+          try {
+            const response = await axios.post(`${API_URL}/api/alignment`, {
+              expectedText: expectedTextRef.current || spokenText,
+              spokenText: spokenText
+            });
+
+            const comparison = response.data || [];
+            if (Array.isArray(comparison) && comparison.length > 0) {
+              setAlignedWords(comparison);
+              setWords(prev => {
+                if (!prev || prev.length === 0) return prev;
+                return prev.map((w, index) => {
+                  const align = comparison[index];
+                  if (!align) return w;
+
+                  let status = 'hidden';
+                  if (align.status === 'correct') status = 'correct';
+                  else if (align.status === 'minor') status = 'minor';
+                  else if (align.status === 'mismatch' || align.status === 'major') status = 'major';
+                  else if (align.status === 'missing') status = 'hidden';
+
+                  return { ...w, status };
+                });
+              });
+            }
+          } catch (err) {
+            console.error("Alignment API error:", err);
+          }
+        }, 400);
       };
 
       recognition.onerror = (event) => {
         console.error("Speech recognition error", event.error);
       };
 
+      recognition.onend = () => {
+        // Continuous auto-restart when recording is active so listening never stops mid-recitation
+        if (isRecording && recognitionRef.current) {
+          try {
+            recognitionRef.current.start();
+          } catch (e) {}
+        }
+      };
+
       recognitionRef.current = recognition;
     }
-  }, []);
+
+    return () => {
+      clearTimeout(alignmentTimerRef.current);
+    };
+  }, [isRecording]);
 
   useEffect(() => {
     const fetchSurahs = async () => {
