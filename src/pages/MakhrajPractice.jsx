@@ -16,8 +16,11 @@ const MakhrajPractice = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef(null);
 
+  const currentData = selectedLetter ? makhrajData[selectedLetter] : null;
+
   // Helper to get description based on language
   const getDescription = (letterData) => {
+    if (!letterData) return '';
     switch (language) {
       case 'hi': return letterData.place_hi;
       case 'gu': return letterData.place_gu;
@@ -50,6 +53,7 @@ const MakhrajPractice = () => {
   };
 
   const playAudio = (audioPath, letter) => {
+    if (!audioPath || !letter) return;
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
@@ -82,13 +86,14 @@ const MakhrajPractice = () => {
     });
   };
 
-
-  React.useEffect(() => {
+  useEffect(() => {
     return () => {
         if (audioRef.current) {
             audioRef.current.pause();
         }
-        window.speechSynthesis.cancel();
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+        }
     };
   }, []);
 
@@ -130,7 +135,7 @@ const MakhrajPractice = () => {
 
         {/* Modal */}
         <AnimatePresence>
-            {selectedLetter && (
+            {selectedLetter && currentData && (
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -163,7 +168,7 @@ const MakhrajPractice = () => {
                             <div className="space-y-2 w-full">
                                 <h3 className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em]">Articulation Point</h3>
                                 <p className="text-sm font-medium text-slate-200 leading-relaxed">
-                                    {getDescription(makhrajData[selectedLetter])}
+                                    {getDescription(currentData)}
                                 </p>
                             </div>
 
@@ -176,12 +181,12 @@ const MakhrajPractice = () => {
                             >
                                 <VocalTract 
                                     activeLetter={selectedLetter} 
-                                    articulationPoint={makhrajData[selectedLetter].articulation} 
+                                    articulationPoint={currentData.articulation} 
                                 />
                             </motion.div>
 
                             <button
-                                onClick={() => playAudio(makhrajData[selectedLetter].audio, selectedLetter)}
+                                onClick={() => playAudio(currentData.audio, selectedLetter)}
                                 disabled={isPlaying}
                                 className={`w-full flex items-center justify-center gap-3 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 ${
                                     isPlaying 
