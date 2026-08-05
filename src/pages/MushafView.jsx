@@ -567,16 +567,21 @@ const MushafView = () => {
               )}
             </AnimatePresence>
 
-            {/* Bismillah */}
-            {selectedSurah?.id !== 1 && selectedSurah?.id !== 9 && (
+            {/* Ta'awwudh & Bismillah Header */}
+            {selectedSurah && (
               <motion.div 
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="py-12 text-center"
+                className="py-10 text-center space-y-3"
               >
-                <p className="text-4xl md:text-5xl font-arabic text-emerald-50/90 leading-relaxed">
-                  بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
+                <p className="text-3xl md:text-4xl font-arabic text-slate-300/80 leading-relaxed">
+                  أَعُوذُ بِٱللَّهِ مِنَ ٱلشَّيْطَٰنِ ٱلرَّجِيمِ
                 </p>
+                {selectedSurah.id !== 9 && (
+                  <p className="text-4xl md:text-5xl font-arabic text-emerald-400 font-bold leading-relaxed">
+                    بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ
+                  </p>
+                )}
                 <div className="w-32 h-px bg-gradient-to-r from-transparent via-emerald-500/20 to-transparent mx-auto mt-8" />
               </motion.div>
             )}

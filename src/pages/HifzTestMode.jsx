@@ -1720,6 +1720,18 @@ const HifzTestMode = () => {
                 </header>
 
                 <main className="flex-grow pt-24 pb-40 px-4 max-w-lg mx-auto w-full">
+                    {visibleAyahs.some(a => a.words?.some(w => w.ayahNumber === 1)) && (
+                        <div className="w-full text-center py-4 mb-4 space-y-2" dir="rtl">
+                            <p className="text-xl md:text-2xl font-arabic text-slate-300/80">
+                                أَعُوذُ بِٱللَّهِ مِنَ ٱلشَّيْطَٰنِ ٱلرَّجِيمِ
+                            </p>
+                            {selectedSurah?.id !== 9 && (
+                                <p className="text-2xl md:text-3xl font-arabic text-emerald-400 font-bold">
+                                    بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ
+                                </p>
+                            )}
+                        </div>
+                    )}
                     <div className="flex flex-wrap justify-center content-start gap-x-2 gap-y-6 text-center leading-[3.2]" dir="rtl">
                         {visibleAyahs.map((ayah) => (
                             <React.Fragment key={ayah.id}>

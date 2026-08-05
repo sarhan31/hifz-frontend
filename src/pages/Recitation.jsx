@@ -82,6 +82,16 @@ const Recitation = () => {
       .trim();
   };
 
+  const removePreliminaries = (text) => {
+    let cleaned = normalizeArabic(text);
+    cleaned = cleaned.replace(/اعوذ بالله من الشيطان الرجيم/g, "");
+    cleaned = cleaned.replace(/اعوذ بالله من الشيطان/g, "");
+    cleaned = cleaned.replace(/بسم الله الرحمن الرحيم/g, "");
+    cleaned = cleaned.replace(/بسم الله الرحمن/g, "");
+    cleaned = cleaned.replace(/بسم الله/g, "");
+    return cleaned.trim();
+  };
+
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -96,8 +106,11 @@ const Recitation = () => {
         for (let i = 0; i < event.results.length; i++) {
           fullTranscript += event.results[i][0].transcript + " ";
         }
-        const spokenText = fullTranscript.trim();
-        if (!spokenText) return;
+        const rawSpoken = fullTranscript.trim();
+        if (!rawSpoken) return;
+
+        // Clean Ta'awwudh & Bismillah at start of recitation
+        const spokenText = removePreliminaries(rawSpoken) || rawSpoken;
 
         // 1. INSTANT LOCAL ALIGNMENT (0ms Latency UI Feedback)
         const spokenWords = spokenText.split(/\s+/).map(normalizeArabic).filter(Boolean);
@@ -679,7 +692,20 @@ const Recitation = () => {
                 </div>
 
                 {/* Real-time Feedback Area */}
-                <div className="w-full glass-card p-8 min-h-[160px] flex items-center justify-center">
+                <div className="w-full glass-card p-8 min-h-[160px] flex flex-col items-center justify-center">
+                   {selectedSurah && (
+                      <div className="mb-6 text-center space-y-2" dir="rtl">
+                        <p className="text-xl md:text-2xl font-arabic text-slate-300/80">
+                          أَعُوذُ بِٱللَّهِ مِنَ ٱلشَّيْطَٰنِ ٱلرَّجِيمِ
+                        </p>
+                        {selectedSurah.id !== 9 && (
+                          <p className="text-2xl md:text-3xl font-arabic text-emerald-400 font-bold">
+                            بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ
+                          </p>
+                        )}
+                        <div className="w-24 h-px bg-gradient-to-r from-transparent via-emerald-500/20 to-transparent mx-auto mt-3" />
+                      </div>
+                   )}
                    {words.length > 0 ? (
                       <div className="flex flex-wrap justify-center gap-x-4 gap-y-6" dir="rtl">
                         {words.map((item, index) => (

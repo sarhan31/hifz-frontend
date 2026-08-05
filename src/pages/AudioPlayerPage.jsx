@@ -346,12 +346,18 @@ const AudioPlayerPage = () => {
           </div>
         ) : (
           <div className="max-w-2xl mx-auto">
-            {/* Bismillah */}
-            {selectedSurah?.id !== 1 && selectedSurah?.id !== 9 && (
-              <div className="mb-12 text-center">
-                <h2 className="text-4xl md:text-5xl font-arabic text-emerald-50/90 leading-relaxed">
-                  بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
-                </h2>
+            {/* Ta'awwudh & Bismillah Header */}
+            {selectedSurah && (
+              <div className="mb-10 text-center space-y-3">
+                <p className="text-2xl md:text-3xl font-arabic text-slate-300/80 leading-relaxed">
+                  أَعُوذُ بِٱللَّهِ مِنَ ٱلشَّيْطَٰنِ ٱلرَّجِيمِ
+                </p>
+                {selectedSurah.id !== 9 && (
+                  <h2 className="text-3xl md:text-4xl font-arabic text-emerald-400 leading-relaxed font-bold">
+                    بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ
+                  </h2>
+                )}
+                <div className="w-32 h-px bg-gradient-to-r from-transparent via-emerald-500/20 to-transparent mx-auto mt-4" />
               </div>
             )}
 
